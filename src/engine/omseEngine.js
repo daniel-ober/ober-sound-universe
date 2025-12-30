@@ -4,10 +4,10 @@ import * as Tone from "tone";
 /**
  * OMSE: Ober MotionSynth Engine
  *
- * Current responsibilities:
+ * Responsibilities:
  * - Core 3-layer voice (ground, harmony, atmos)
  * - Three Orbit voices (A/B/C)
- * - Master bus + meters
+ * - Master bus + meters + spectrum
  * - Orbit A simple pattern
  * - Helper getters for UI meters & spectrum
  */
@@ -19,13 +19,15 @@ class OmseEngine {
     // ----- MASTER BUS -----
     this.masterGain = new Tone.Gain(0.8);
 
-    // Waveform analyser for master meters (time-domain, 0..1-ish amplitude)
-    this.masterAnalyser = new Tone.Analyser("waveform", 128);
+    // Level meter for master (0..1-ish, via Tone.Meter)
+    this.masterMeter = new Tone.Meter({
+      smoothing: 0.8,
+    });
 
     // FFT analyser for spectrum (frequency domain)
-    this.masterFFT = new Tone.Analyser("fft", 128);
+    this.masterFFT = new Tone.Analyser("fft", 256);
 
-    this.masterGain.connect(this.masterAnalyser);
+    this.masterGain.connect(this.masterMeter);
     this.masterGain.connect(this.masterFFT);
     this.masterGain.toDestination();
 
@@ -68,11 +70,15 @@ class OmseEngine {
   _makeCoreLayer(options) {
     const gain = new Tone.Gain(0.9).connect(this.masterGain);
 
-    // Waveform analyser for per-layer meters
-    const analyser = new Tone.Analyser("waveform", 64);
-    gain.connect(analyser);
+    // Per-layer level meter
+    const meter = new Tone.Meter({
+      smoothing: 0.8,
+    });
+    gain.connect(meter);
 
-    const synth = new Tone.Synth({
+    // Polyphonic synth for chords
+    const synth = new Tone.PolySynth(Tone.Synth, {
+      maxPolyphony: 8,
       oscillator: { type: "triangle" },
       envelope: {
         attack: options.attack ?? 0.05,
@@ -87,7 +93,7 @@ class OmseEngine {
     return {
       synth,
       gain,
-      analyser,
+      meter,
       octaveOffset: options.octaveOffset ?? 0,
       muted: false,
       currentGain: 1,
@@ -97,9 +103,10 @@ class OmseEngine {
   _makeOrbitVoice() {
     const gain = new Tone.Gain(0.7).connect(this.masterGain);
 
-    // Waveform analyser for Orbit meters
-    const analyser = new Tone.Analyser("waveform", 64);
-    gain.connect(analyser);
+    const meter = new Tone.Meter({
+      smoothing: 0.8,
+    });
+    gain.connect(meter);
 
     const synth = new Tone.Synth({
       oscillator: { type: "sawtooth" },
@@ -116,7 +123,7 @@ class OmseEngine {
     return {
       synth,
       gain,
-      analyser,
+      meter,
       muted: false,
       currentGain: 1,
     };
@@ -174,10 +181,12 @@ class OmseEngine {
     const now = Tone.now();
 
     if (voiceId === "core") {
-      // Trigger all three Core layers with octave offsets
+      // Trigger all three Core layers with octave offsets (poly)
       Object.values(this.core.layers).forEach((layer) => {
-        const freq = Tone.Frequency(note).transpose(layer.octaveOffset);
-        layer.synth.triggerAttack(freq, now);
+        const playedNote = Tone.Frequency(note)
+          .transpose(layer.octaveOffset)
+          .toNote();
+        layer.synth.triggerAttack(playedNote, now);
       });
       return;
     }
@@ -188,21 +197,25 @@ class OmseEngine {
     }
   }
 
-  noteOff(voiceId) {
+  noteOff(voiceId, note) {
     if (!this.started) return;
 
     const now = Tone.now();
 
     if (voiceId === "core") {
+      // Release only this note (per layer)
       Object.values(this.core.layers).forEach((layer) => {
-        layer.synth.triggerRelease(now);
+        const playedNote = Tone.Frequency(note)
+          .transpose(layer.octaveOffset)
+          .toNote();
+        layer.synth.triggerRelease(playedNote, now);
       });
       return;
     }
 
     const orbit = this.orbits[voiceId];
     if (orbit) {
-      orbit.synth.triggerRelease(now);
+      orbit.synth.triggerRelease(note, now);
     }
   }
 
@@ -217,10 +230,12 @@ class OmseEngine {
     chord.forEach((n, index) => {
       const t = now + index * 0.75;
 
-      // Core chord swell
+      // Core chord swell (still poly)
       Object.values(this.core.layers).forEach((layer) => {
-        const freq = Tone.Frequency(n).transpose(layer.octaveOffset);
-        layer.synth.triggerAttackRelease(freq, "0.7", t);
+        const playedNote = Tone.Frequency(n)
+          .transpose(layer.octaveOffset)
+          .toNote();
+        layer.synth.triggerAttackRelease(playedNote, "0.7", t);
       });
 
       // Orbit A accent
@@ -254,50 +269,43 @@ class OmseEngine {
       this.orbitAPattern.dispose();
       this.orbitAPattern = null;
     }
-    // We leave Transport running for future patterns.
+    // Leave Transport running for future patterns.
   }
 
-  // ---------- METER HELPERS (waveform → 0..1 visual level) ----------
+  // ---------- METER HELPERS (for Core, Orbits, Master) ----------
 
-  _avgWaveform(analyser) {
-    const values = analyser.getValue();
-    if (!values || !values.length) return 0;
-    let sum = 0;
-    for (let i = 0; i < values.length; i++) {
-      sum += Math.abs(values[i]); // waveform is roughly -1..1
+  _meterToLevel(meter) {
+    if (!meter) return 0;
+    const value = meter.getValue();
+
+    if (!Number.isFinite(value)) return 0;
+
+    // If this looks like dB (-100..0), map to 0..1
+    if (value <= 0 && value >= -100) {
+      const norm = (value + 60) / 60; // treat -60 dB as ~0
+      const clamped = Math.max(0, Math.min(1, norm));
+      return clamped ** 1.4;
     }
-    return sum / values.length; // ~0..1
-  }
 
-  _ampToLevel(val) {
-    if (!Number.isFinite(val)) return 0;
-    const clamped = Math.max(0, Math.min(1, val));
-    // Make low levels visible but keep some headroom
-    const curved = Math.pow(clamped, 0.6);
-    const boosted = curved * 1.1;
-    return boosted > 1 ? 1 : boosted;
+    // Otherwise assume 0..1 linear
+    const clamped = Math.max(0, Math.min(1, value));
+    return clamped ** 1.4;
   }
 
   getCoreLayerLevel(id) {
     const layer = this.core.layers[id];
     if (!layer) return 0;
-    const avg = this._avgWaveform(layer.analyser);
-    return this._ampToLevel(avg);
+    return this._meterToLevel(layer.meter);
   }
 
   getOrbitLevel(id) {
     const voice = this.orbits[id];
     if (!voice) return 0;
-    const avg = this._avgWaveform(voice.analyser);
-    // Slight extra boost on orbits since patterns are sparser
-    const base = this._ampToLevel(avg);
-    const boosted = base * 1.2;
-    return boosted > 1 ? 1 : boosted;
+    return this._meterToLevel(voice.meter);
   }
 
   getMasterLevel() {
-    const avg = this._avgWaveform(this.masterAnalyser);
-    return this._ampToLevel(avg);
+    return this._meterToLevel(this.masterMeter);
   }
 
   // ---------- SPECTRUM FOR MASTER OUTPUT ----------
