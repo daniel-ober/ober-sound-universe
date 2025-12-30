@@ -1,0 +1,19 @@
+/* src/components/OrbitMeter.css */
+
+.orbit-meter {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.95);
+  overflow: hidden;
+  position: relative;
+}
+
+.orbit-meter-inner {
+  height: 100%;
+  width: 0%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #38bdf8, #6366f1, #ec4899);
+  transition: width 60ms linear;
+  opacity: 0.9;
+}

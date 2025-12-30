@@ -1,0 +1,24 @@
+/* src/components/MasterSpectrum.css */
+
+.master-spectrum {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 18px;
+  padding: 2px 0;
+  width: 160px;
+}
+
+.master-spectrum-bar {
+  flex: 1;
+  transform-origin: bottom center;
+  border-radius: 999px;
+  background: linear-gradient(
+    to top,
+    rgba(56, 189, 248, 0.3),
+    rgba(129, 140, 248, 0.7),
+    rgba(236, 72, 153, 0.9)
+  );
+  opacity: 0.4;
+  transition: transform 60ms linear, opacity 80ms linear;
+}

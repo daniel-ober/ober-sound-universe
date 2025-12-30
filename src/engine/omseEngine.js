@@ -2,452 +2,324 @@
 import * as Tone from "tone";
 
 /**
- * OMSE - Ober MotionSynth Engine (prototype)
+ * OMSE: Ober MotionSynth Engine
  *
- * Core:
- *  - 3-layer Core voice:
- *      • ground  = deep low foundation (sine, one octave down)
- *      • harmony = mid-range musical body (sawtooth, original pitch)
- *      • atmos   = airy pad + pink noise wash (original pitch)
- *  - Core layers route into a Core buss, which feeds the master buss.
- *
- * Orbits:
- *  - orbitA / orbitB / orbitC are simple placeholder synth voices for now,
- *    each with their own gain + mute controls and FFT analyser.
- *
- * Visuals:
- *  - Per-layer FFT analysers for Core meters.
- *  - Per-orbit FFT analysers for Orbit meters.
- *  - Master output FFT analyser for global output meter.
- *
- * Controls:
- *  - Per-layer gain and mute control for Core layers.
- *  - Per-orbit gain and mute control.
- *  - noteOn/noteOff for Core + Orbits.
- *  - playTestScene uses all three Core layers + Orbits.
+ * Current responsibilities:
+ * - Core 3-layer voice (ground, harmony, atmos)
+ * - Three Orbit voices (A/B/C)
+ * - Master bus + meters
+ * - Orbit A simple pattern
+ * - Helper getters for UI meters & spectrum
  */
 
-class OMSEEngine {
+class OmseEngine {
   constructor() {
-    this.initialized = false;
     this.started = false;
 
-    // Global routing
-    this.masterGain = null;
-    this.masterAnalyser = null;
+    // ----- MASTER BUS -----
+    this.masterGain = new Tone.Gain(0.8);
 
-    this.reverb = null;
+    // Waveform analyser for master meters (time-domain, 0..1-ish amplitude)
+    this.masterAnalyser = new Tone.Analyser("waveform", 128);
 
-    // Core layered voice
+    // FFT analyser for spectrum (frequency domain)
+    this.masterFFT = new Tone.Analyser("fft", 128);
+
+    this.masterGain.connect(this.masterAnalyser);
+    this.masterGain.connect(this.masterFFT);
+    this.masterGain.toDestination();
+
+    // ----- CORE LAYERS -----
     this.core = {
-      bussGain: null,
       layers: {
-        ground: null,
-        harmony: null,
-        atmos: null,
+        ground: this._makeCoreLayer({
+          octaveOffset: -12, // low foundation
+          volume: -6,
+          attack: 0.02,
+          release: 0.6,
+        }),
+        harmony: this._makeCoreLayer({
+          octaveOffset: 0, // mid body
+          volume: -10,
+          attack: 0.04,
+          release: 0.8,
+        }),
+        atmos: this._makeCoreLayer({
+          octaveOffset: 12, // air
+          volume: -16,
+          attack: 0.4,
+          release: 2.5,
+        }),
       },
     };
 
-    // Orbit voices
-    this.voices = {
-      orbitA: null,
-      orbitB: null,
-      orbitC: null,
+    // ----- ORBITS -----
+    this.orbits = {
+      orbitA: this._makeOrbitVoice(),
+      orbitB: this._makeOrbitVoice(),
+      orbitC: this._makeOrbitVoice(),
+    };
+
+    this.orbitAPattern = null;
+  }
+
+  // ---------- INTERNAL BUILDERS ----------
+
+  _makeCoreLayer(options) {
+    const gain = new Tone.Gain(0.9).connect(this.masterGain);
+
+    // Waveform analyser for per-layer meters
+    const analyser = new Tone.Analyser("waveform", 64);
+    gain.connect(analyser);
+
+    const synth = new Tone.Synth({
+      oscillator: { type: "triangle" },
+      envelope: {
+        attack: options.attack ?? 0.05,
+        decay: 0.1,
+        sustain: 0.7,
+        release: options.release ?? 0.8,
+      },
+    }).connect(gain);
+
+    synth.volume.value = options.volume ?? -12;
+
+    return {
+      synth,
+      gain,
+      analyser,
+      octaveOffset: options.octaveOffset ?? 0,
+      muted: false,
+      currentGain: 1,
     };
   }
 
-  async init() {
-    if (this.initialized) return;
+  _makeOrbitVoice() {
+    const gain = new Tone.Gain(0.7).connect(this.masterGain);
 
-    // ----- MASTER BUS -----
-    this.masterGain = new Tone.Gain(0.9).toDestination();
+    // Waveform analyser for Orbit meters
+    const analyser = new Tone.Analyser("waveform", 64);
+    gain.connect(analyser);
 
-    // Master output analyser (after master gain)
-    this.masterAnalyser = new Tone.Analyser("fft", 64);
-    this.masterGain.connect(this.masterAnalyser);
+    const synth = new Tone.Synth({
+      oscillator: { type: "sawtooth" },
+      envelope: {
+        attack: 0.01,
+        decay: 0.15,
+        sustain: 0.5,
+        release: 0.4,
+      },
+    }).connect(gain);
 
-    this.reverb = new Tone.Reverb({
-      decay: 6,
-      wet: 0.25,
-    }).connect(this.masterGain);
+    synth.volume.value = -14;
 
-    // ----- CORE BUSS -----
-    this.core.bussGain = new Tone.Gain(1.0);
-    this.core.bussGain.connect(this.reverb);
-
-    // Helper: create a core layer synth (ground / harmony)
-    const makeCoreLayer = ({
-      oscType = "sine",
-      attack = 0.3,
-      decay = 0.5,
-      release = 3,
-      initialGain = 0.8,
-    }) => {
-      const synth = new Tone.PolySynth(Tone.Synth, {
-        oscillator: { type: oscType },
-        envelope: {
-          attack,
-          decay,
-          sustain: 0.9,
-          release,
-        },
-      });
-
-      const gain = new Tone.Gain(initialGain);
-      synth.connect(gain);
-
-      // FFT analyser for this layer
-      const analyser = new Tone.Analyser("fft", 64);
-      gain.connect(analyser);
-
-      // Route to Core buss
-      gain.connect(this.core.bussGain);
-
-      return {
-        synth,
-        gain,
-        analyser,
-        baseGain: initialGain,
-        muted: false,
-      };
+    return {
+      synth,
+      gain,
+      analyser,
+      muted: false,
+      currentGain: 1,
     };
-
-    // ----- CORE LAYERS -----
-
-    // Ground — deep, smooth low foundation (sine; we play it one octave down)
-    this.core.layers.ground = makeCoreLayer({
-      oscType: "sine",
-      attack: 0.4,
-      decay: 0.5,
-      release: 4,
-      initialGain: 0.9,
-    });
-
-    // Harmony — brighter mid-range body (sawtooth at played pitch)
-    this.core.layers.harmony = makeCoreLayer({
-      oscType: "sawtooth",
-      attack: 0.2,
-      decay: 0.4,
-      release: 3.5,
-      initialGain: 0.65,
-    });
-
-    // Atmos — airy pad + pink noise wash (original pitch)
-    {
-      const atmosInitialGain = 0.55;
-
-      const atmosSynth = new Tone.PolySynth(Tone.Synth, {
-        oscillator: { type: "sine" },
-        envelope: {
-          attack: 2.5,
-          decay: 1.5,
-          sustain: 0.9,
-          release: 8,
-        },
-      });
-
-      const atmosNoise = new Tone.Noise("pink");
-      const atmosFilter = new Tone.Filter(800, "lowpass");
-
-      // Low noise contribution so meters aren’t going crazy at idle
-      const atmosNoiseGain = new Tone.Gain(0.04);
-
-      // Shared gain node for both synth + noise so mixer/mute affect everything
-      const atmosLayerGain = new Tone.Gain(atmosInitialGain);
-
-      atmosSynth.connect(atmosLayerGain);
-
-      atmosNoise.connect(atmosFilter);
-      atmosFilter.connect(atmosNoiseGain);
-      atmosNoiseGain.connect(atmosLayerGain);
-
-      // FFT analyser for the Atmos layer (after synth+noise mix)
-      const atmosAnalyser = new Tone.Analyser("fft", 64);
-      atmosLayerGain.connect(atmosAnalyser);
-
-      atmosLayerGain.connect(this.core.bussGain);
-
-      atmosNoise.start();
-
-      this.core.layers.atmos = {
-        synth: atmosSynth,
-        gain: atmosLayerGain,
-        analyser: atmosAnalyser,
-        baseGain: atmosInitialGain,
-        muted: false,
-      };
-    }
-
-    // ----- ORBIT VOICES (simple placeholders for now) -----
-    const makeOrbitVoice = ({ initialGain = 0.7 } = {}) => {
-      const synth = new Tone.PolySynth(Tone.Synth, {
-        oscillator: { type: "sawtooth" },
-        envelope: {
-          attack: 0.05,
-          decay: 0.3,
-          sustain: 0.7,
-          release: 1.5,
-        },
-      });
-
-      const gain = new Tone.Gain(initialGain);
-      synth.connect(gain);
-      gain.connect(this.reverb);
-
-      // Orbit FFT analyser for meters
-      const analyser = new Tone.Analyser("fft", 64);
-      gain.connect(analyser);
-
-      return {
-        synth,
-        gain,
-        analyser,
-        baseGain: initialGain,
-        muted: false,
-      };
-    };
-
-    this.voices.orbitA = makeOrbitVoice({ initialGain: 0.7 });
-    this.voices.orbitB = makeOrbitVoice({ initialGain: 0.7 });
-    this.voices.orbitC = makeOrbitVoice({ initialGain: 0.7 });
-
-    // Simple tempo baseline
-    Tone.Transport.bpm.value = 80;
-
-    this.initialized = true;
   }
+
+  // ---------- LIFECYCLE ----------
 
   async startAudioContext() {
     if (this.started) return;
     await Tone.start();
-    await this.init();
+    console.log("Tone.js", Tone.version);
     this.started = true;
     console.log("OMSE audio context started.");
   }
 
-  /**
-   * Play a note on a given voice.
-   * voiceId: 'core' | 'orbitA' | 'orbitB' | 'orbitC'
-   * note: 'C4', 'D4', etc.
-   */
+  // ---------- GAIN / MUTE HELPERS ----------
+
+  _applyLayerGain(layer, value) {
+    layer.currentGain = value;
+    layer.gain.gain.rampTo(layer.muted ? 0 : value, 0.05);
+  }
+
+  setCoreLayerGain(id, value) {
+    const layer = this.core.layers[id];
+    if (!layer) return;
+    this._applyLayerGain(layer, value);
+  }
+
+  setCoreLayerMute(id, muted) {
+    const layer = this.core.layers[id];
+    if (!layer) return;
+    layer.muted = muted;
+    this._applyLayerGain(layer, layer.currentGain);
+  }
+
+  setOrbitGain(id, value) {
+    const voice = this.orbits[id];
+    if (!voice) return;
+    voice.currentGain = value;
+    voice.gain.gain.rampTo(voice.muted ? 0 : value, 0.05);
+  }
+
+  setOrbitMute(id, muted) {
+    const voice = this.orbits[id];
+    if (!voice) return;
+    voice.muted = muted;
+    voice.gain.gain.rampTo(muted ? 0 : voice.currentGain, 0.05);
+  }
+
+  // ---------- NOTE HANDLING ----------
+
   noteOn(voiceId, note) {
     if (!this.started) return;
 
+    const now = Tone.now();
+
     if (voiceId === "core") {
-      const { ground, harmony, atmos } = this.core.layers;
-
-      // Ground = one octave lower
-      if (ground) {
-        const lowNote = Tone.Frequency(note).transpose(-12).toNote();
-        ground.synth.triggerAttack(lowNote);
-      }
-
-      // Harmony = original pitch, brighter timbre (sawtooth)
-      if (harmony) {
-        harmony.synth.triggerAttack(note);
-      }
-
-      // Atmos = pad at original pitch
-      if (atmos) {
-        atmos.synth.triggerAttack(note);
-      }
-
+      // Trigger all three Core layers with octave offsets
+      Object.values(this.core.layers).forEach((layer) => {
+        const freq = Tone.Frequency(note).transpose(layer.octaveOffset);
+        layer.synth.triggerAttack(freq, now);
+      });
       return;
     }
 
-    const voice = this.voices[voiceId];
-    if (!voice) return;
-
-    voice.synth.triggerAttack(note);
+    const orbit = this.orbits[voiceId];
+    if (orbit) {
+      orbit.synth.triggerAttack(note, now);
+    }
   }
 
-  noteOff(voiceId, note) {
+  noteOff(voiceId) {
     if (!this.started) return;
-
-    if (voiceId === "core") {
-      const { ground, harmony, atmos } = this.core.layers;
-
-      if (ground) {
-        const lowNote = Tone.Frequency(note).transpose(-12).toNote();
-        ground.synth.triggerRelease(lowNote);
-      }
-
-      if (harmony) {
-        harmony.synth.triggerRelease(note);
-      }
-
-      if (atmos) {
-        atmos.synth.triggerRelease(note);
-      }
-
-      return;
-    }
-
-    const voice = this.voices[voiceId];
-    if (!voice) return;
-
-    voice.synth.triggerRelease(note);
-  }
-
-  /**
-   * Adjust Core layer gain.
-   * layerId: 'ground' | 'harmony' | 'atmos'
-   * gainValue: 0.0 - 1.0
-   */
-  setCoreLayerGain(layerId, gainValue) {
-    if (!this.initialized) return;
-    const layer = this.core.layers[layerId];
-    if (!layer) return;
-
-    layer.baseGain = gainValue;
-    if (!layer.muted) {
-      layer.gain.gain.value = gainValue;
-    }
-  }
-
-  /**
-   * Mute/unmute Core layer while remembering its base gain.
-   */
-  setCoreLayerMute(layerId, muted) {
-    if (!this.initialized) return;
-    const layer = this.core.layers[layerId];
-    if (!layer) return;
-
-    layer.muted = muted;
-    layer.gain.gain.value = muted ? 0 : layer.baseGain;
-  }
-
-  /**
-   * Get FFT data (Float32Array → plain array) for a Core layer.
-   * Returns null if analyser not ready or layer effectively silent.
-   */
-  getCoreLayerFFT(layerId) {
-    if (!this.initialized) return null;
-    const layer = this.core.layers[layerId];
-    if (!layer || !layer.analyser) return null;
-
-    // If muted or very low gain, treat as silence for visuals
-    const currentGain = layer.gain?.gain?.value ?? 0;
-    if (layer.muted || currentGain < 0.05) {
-      return null;
-    }
-
-    const values = layer.analyser.getValue();
-    return Array.from(values);
-  }
-
-  /**
-   * Orbit mixer controls
-   */
-  setOrbitGain(voiceId, gainValue) {
-    if (!this.initialized) return;
-    const voice = this.voices[voiceId];
-    if (!voice || !voice.gain) return;
-
-    voice.baseGain = gainValue;
-    if (!voice.muted) {
-      voice.gain.gain.value = gainValue;
-    }
-  }
-
-  setOrbitMute(voiceId, muted) {
-    if (!this.initialized) return;
-    const voice = this.voices[voiceId];
-    if (!voice || !voice.gain) return;
-
-    voice.muted = muted;
-    voice.gain.gain.value = muted ? 0 : voice.baseGain ?? 0.7;
-  }
-
-  /**
-   * Get FFT data for an Orbit voice.
-   * Returns null if analyser not ready or the orbit is effectively silent.
-   */
-  getOrbitFFT(voiceId) {
-    if (!this.initialized) return null;
-    const voice = this.voices[voiceId];
-    if (!voice || !voice.analyser) return null;
-
-    const currentGain = voice.gain?.gain?.value ?? 0;
-    if (voice.muted || currentGain < 0.05) {
-      return null;
-    }
-
-    const values = voice.analyser.getValue();
-    return Array.from(values);
-  }
-
-  /**
-   * Get FFT data for the master output.
-   * Returns null if analyser not ready or output is effectively silent.
-   */
-  getMasterFFT() {
-    if (!this.initialized || !this.masterAnalyser) return null;
-
-    const values = this.masterAnalyser.getValue();
-    if (!values || !values.length) return null;
-
-    // Compute max dB and threshold like other meters
-    let maxDb = -Infinity;
-    for (let i = 0; i < values.length; i++) {
-      if (values[i] > maxDb) maxDb = values[i];
-    }
-    if (!Number.isFinite(maxDb)) maxDb = -100;
-
-    if (maxDb <= -75) return null;
-
-    return Array.from(values);
-  }
-
-  /**
-   * Simple "this thing is alive" demo:
-   * Plays a chord on Core layers and gentle responses on the Orbits.
-   */
-  async playTestScene() {
-    if (!this.started) return;
-
-    if (!Tone.Transport.state || Tone.Transport.state !== "started") {
-      Tone.Transport.start();
-    }
 
     const now = Tone.now();
 
-    const coreChord = ["C3", "G3", "D4"];
-
-    const { ground, harmony, atmos } = this.core.layers;
-
-    // Ground chord one octave lower
-    if (ground) {
-      const lowChord = coreChord.map((n) =>
-        Tone.Frequency(n).transpose(-12).toNote()
-      );
-      ground.synth.triggerAttackRelease(lowChord, 8, now + 0.1);
+    if (voiceId === "core") {
+      Object.values(this.core.layers).forEach((layer) => {
+        layer.synth.triggerRelease(now);
+      });
+      return;
     }
 
-    // Harmony chord at original pitch, brighter timbre
-    if (harmony) {
-      const harmonyChord = ["E3", "B3", "F4"];
-      harmony.synth.triggerAttackRelease(harmonyChord, 9, now + 0.2);
+    const orbit = this.orbits[voiceId];
+    if (orbit) {
+      orbit.synth.triggerRelease(now);
     }
+  }
 
-    // Atmos stays at played octave, slower + airy
-    if (atmos) {
-      atmos.synth.triggerAttackRelease(["C4", "G4"], 10, now + 0.5);
+  // ---------- TEST SCENE ----------
+
+  async playTestScene() {
+    if (!this.started) return;
+
+    const now = Tone.now();
+    const chord = ["C4", "G4", "A4", "E4"];
+
+    chord.forEach((n, index) => {
+      const t = now + index * 0.75;
+
+      // Core chord swell
+      Object.values(this.core.layers).forEach((layer) => {
+        const freq = Tone.Frequency(n).transpose(layer.octaveOffset);
+        layer.synth.triggerAttackRelease(freq, "0.7", t);
+      });
+
+      // Orbit A accent
+      this.orbits.orbitA.synth.triggerAttackRelease(n, "0.3", t + 0.1);
+    });
+
+    return new Promise((resolve) => setTimeout(resolve, 4000));
+  }
+
+  // ---------- ORBIT A PATTERN ----------
+
+  startOrbitAPattern() {
+    if (!this.started) return;
+    if (this.orbitAPattern) return;
+
+    const notes = ["C5", "E5", "G5", "B4"];
+    let step = 0;
+
+    this.orbitAPattern = new Tone.Loop((time) => {
+      const note = notes[step % notes.length];
+      this.orbits.orbitA.synth.triggerAttackRelease(note, "0.22", time);
+      step++;
+    }, "8n").start(0);
+
+    Tone.Transport.start();
+  }
+
+  stopOrbitAPattern() {
+    if (this.orbitAPattern) {
+      this.orbitAPattern.stop();
+      this.orbitAPattern.dispose();
+      this.orbitAPattern = null;
     }
+    // We leave Transport running for future patterns.
+  }
 
-    // Orbits: staggered responses
-    this.voices.orbitA.synth.triggerAttackRelease(
-      ["E4", "G4"],
-      6,
-      now + 1.0
-    );
-    this.voices.orbitB.synth.triggerAttackRelease(
-      ["C4", "B3"],
-      5,
-      now + 2.0
-    );
-    this.voices.orbitC.synth.triggerAttackRelease(["D5"], 4, now + 3.0);
+  // ---------- METER HELPERS (waveform → 0..1 visual level) ----------
+
+  _avgWaveform(analyser) {
+    const values = analyser.getValue();
+    if (!values || !values.length) return 0;
+    let sum = 0;
+    for (let i = 0; i < values.length; i++) {
+      sum += Math.abs(values[i]); // waveform is roughly -1..1
+    }
+    return sum / values.length; // ~0..1
+  }
+
+  _ampToLevel(val) {
+    if (!Number.isFinite(val)) return 0;
+    const clamped = Math.max(0, Math.min(1, val));
+    // Make low levels visible but keep some headroom
+    const curved = Math.pow(clamped, 0.6);
+    const boosted = curved * 1.1;
+    return boosted > 1 ? 1 : boosted;
+  }
+
+  getCoreLayerLevel(id) {
+    const layer = this.core.layers[id];
+    if (!layer) return 0;
+    const avg = this._avgWaveform(layer.analyser);
+    return this._ampToLevel(avg);
+  }
+
+  getOrbitLevel(id) {
+    const voice = this.orbits[id];
+    if (!voice) return 0;
+    const avg = this._avgWaveform(voice.analyser);
+    // Slight extra boost on orbits since patterns are sparser
+    const base = this._ampToLevel(avg);
+    const boosted = base * 1.2;
+    return boosted > 1 ? 1 : boosted;
+  }
+
+  getMasterLevel() {
+    const avg = this._avgWaveform(this.masterAnalyser);
+    return this._ampToLevel(avg);
+  }
+
+  // ---------- SPECTRUM FOR MASTER OUTPUT ----------
+
+  getMasterSpectrum() {
+    if (!this.masterFFT) return [];
+    const values = this.masterFFT.getValue(); // Float32Array of dB
+
+    const arr = [];
+    for (let i = 0; i < values.length; i++) {
+      const v = values[i];
+      if (!Number.isFinite(v)) {
+        arr.push(0);
+        continue;
+      }
+      // Clamp -90 dB (silent-ish) to 0 dB (loud)
+      const clamped = Math.max(-90, Math.min(0, v));
+      const norm = (clamped + 90) / 90; // 0 at -90, 1 at 0
+      arr.push(norm);
+    }
+    return arr;
   }
 }
 
-export const omseEngine = new OMSEEngine();
+export const omseEngine = new OmseEngine();

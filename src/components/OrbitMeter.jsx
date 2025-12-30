@@ -1,58 +1,26 @@
 // src/components/OrbitMeter.jsx
 import { useEffect, useState } from "react";
 import { omseEngine } from "../engine/omseEngine";
-
-/**
- * OrbitMeter
- *
- * Simple activity meter for an Orbit voice (A/B/C).
- * Uses the same FFT → dB mapping as the Core meters.
- *
- * Props:
- *  - orbitId: "orbitA" | "orbitB" | "orbitC"
- *  - audioReady: boolean
- */
+import "./OrbitMeter.css";
 
 export function OrbitMeter({ orbitId, audioReady }) {
-  const [level, setLevel] = useState(0); // 0.0 – 1.0
+  const [level, setLevel] = useState(0);
 
   useEffect(() => {
     let frameId;
-
-    if (!audioReady) {
-      setLevel(0);
-      return;
-    }
+    let running = true;
 
     const update = () => {
-      const fft = omseEngine.getOrbitFFT(orbitId);
+      if (!running) return;
 
-      let nextLevel = 0;
+      // If audio isn't ready, force level to 0
+      const rawLevel = audioReady
+        ? omseEngine.getOrbitLevel(orbitId)
+        : 0;
 
-      if (fft && fft.length) {
-        // Tone FFT values are dB in roughly [-100, 0].
-        // Strategy:
-        //   • below -75 dB => treat as silence
-        //   • map [-75, -30] to [0, 1]
-        let maxDb = -Infinity;
-        for (let i = 0; i < fft.length; i++) {
-          if (fft[i] > maxDb) maxDb = fft[i];
-        }
-        if (!Number.isFinite(maxDb)) {
-          maxDb = -100;
-        }
-
-        if (maxDb > -75) {
-          const clamped = Math.min(-30, Math.max(-75, maxDb)); // -75 .. -30
-          const normalized = (clamped + 75) / 45; // [-75, -30] => [0,1]
-          nextLevel = normalized;
-        } else {
-          nextLevel = 0;
-        }
-      }
-
-      // Smooth to avoid twitchiness (same smoothing as Core)
-      setLevel((prev) => prev * 0.8 + nextLevel * 0.2);
+      // Clamp to [0, 1] just in case
+      const clamped = Math.max(0, Math.min(1, rawLevel));
+      setLevel(clamped);
 
       frameId = requestAnimationFrame(update);
     };
@@ -60,16 +28,17 @@ export function OrbitMeter({ orbitId, audioReady }) {
     frameId = requestAnimationFrame(update);
 
     return () => {
+      running = false;
       if (frameId) cancelAnimationFrame(frameId);
     };
   }, [orbitId, audioReady]);
 
-  const widthPercent = Math.round(level * 100);
+  const widthPercent = level * 100;
 
   return (
-    <div className="core-layer-meter">
+    <div className="orbit-meter">
       <div
-        className="core-layer-meter-inner"
+        className="orbit-meter-inner"
         style={{ width: `${widthPercent}%` }}
       />
     </div>

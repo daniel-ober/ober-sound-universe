@@ -1,6 +1,7 @@
 // src/components/TopBar.jsx
-import { MasterMeter } from "./MasterMeter";
 import "./TopBar.css";
+import { MasterMeter } from "./MasterMeter";
+import { MasterSpectrum } from "./MasterSpectrum";
 
 export function TopBar({
   audioReady,
@@ -32,12 +33,15 @@ export function TopBar({
               {isPlayingDemo ? "Playing Scene…" : "Play Test Scene"}
             </button>
           )}
+
           <span className="hint">
             Play Core with your keyboard: A–K (C4 → C5)
           </span>
         </div>
 
         <div className="top-controls-right">
+          <div className="top-output-label">Output</div>
+          <MasterSpectrum audioReady={audioReady} />
           <MasterMeter audioReady={audioReady} />
         </div>
       </div>
