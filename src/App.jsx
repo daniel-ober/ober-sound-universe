@@ -1,6 +1,7 @@
 // src/App.jsx
 import { useEffect, useState } from "react";
 import { omseEngine } from "./engine/omseEngine";
+import { CoreMixer } from "./components/CoreMixer";
 import "./App.css";
 
 const KEY_TO_NOTE = {
@@ -21,7 +22,7 @@ function App() {
   // UI-side state for Core layers (0–100 for sliders)
   const [coreLayers, setCoreLayers] = useState({
     ground: { gain: 90, muted: false },
-    harmony: { gain: 70, muted: false },
+    harmony: { gain: 65, muted: false },
     atmos: { gain: 55, muted: false },
   });
 
@@ -147,38 +148,12 @@ function App() {
             <strong>{audioReady ? "Ready" : "Not initialized"}</strong>
           </p>
 
-          <div className="core-mixer">
-            <h3>Core Layers</h3>
-            <p className="core-mixer-hint">
-              Adjust each layer&apos;s level, or mute layers to focus on
-              specific aspects of the Core sound.
-            </p>
-
-            <CoreLayerRow
-              id="ground"
-              label="Ground"
-              layerState={coreLayers.ground}
-              audioReady={audioReady}
-              onGainChange={handleLayerGainChange}
-              onToggleMute={handleLayerMuteToggle}
-            />
-            <CoreLayerRow
-              id="harmony"
-              label="Harmony"
-              layerState={coreLayers.harmony}
-              audioReady={audioReady}
-              onGainChange={handleLayerGainChange}
-              onToggleMute={handleLayerMuteToggle}
-            />
-            <CoreLayerRow
-              id="atmos"
-              label="Atmosphere"
-              layerState={coreLayers.atmos}
-              audioReady={audioReady}
-              onGainChange={handleLayerGainChange}
-              onToggleMute={handleLayerMuteToggle}
-            />
-          </div>
+          <CoreMixer
+            audioReady={audioReady}
+            coreLayers={coreLayers}
+            onLayerGainChange={handleLayerGainChange}
+            onLayerMuteToggle={handleLayerMuteToggle}
+          />
         </section>
 
         <section className="orbits-grid">
@@ -187,55 +162,6 @@ function App() {
           <VoiceCard name="Orbit C" description="Third orbiting voice." />
         </section>
       </main>
-    </div>
-  );
-}
-
-function CoreLayerRow({
-  id,
-  label,
-  layerState,
-  audioReady,
-  onGainChange,
-  onToggleMute,
-}) {
-  const handleSliderChange = (e) => {
-    const value = Number(e.target.value);
-    onGainChange(id, value);
-  };
-
-  const handleMuteClick = () => {
-    onToggleMute(id);
-  };
-
-  return (
-    <div className="core-layer-row">
-      <div className="core-layer-label">
-        <span className="core-layer-name">{label}</span>
-        <span className="core-layer-percent">{layerState.gain}%</span>
-      </div>
-      <div className="core-layer-controls">
-        <input
-          type="range"
-          min={0}
-          max={100}
-          value={layerState.gain}
-          onChange={handleSliderChange}
-          disabled={!audioReady}
-          className="core-layer-slider"
-        />
-        <button
-          type="button"
-          onClick={handleMuteClick}
-          disabled={!audioReady}
-          className={
-            "core-layer-mute-btn" +
-            (layerState.muted ? " core-layer-mute-btn--active" : "")
-          }
-        >
-          {layerState.muted ? "Unmute" : "Mute"}
-        </button>
-      </div>
     </div>
   );
 }
