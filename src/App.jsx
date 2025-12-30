@@ -4,6 +4,7 @@ import { omseEngine } from "./engine/omseEngine";
 import { CoreMixer } from "./components/CoreMixer";
 import { VoiceCard } from "./components/VoiceCard";
 import { TopBar } from "./components/TopBar";
+import { GalaxyPresetBar } from "./components/GalaxyPresetBar";
 import "./App.css";
 
 const KEY_TO_NOTE = {
@@ -17,24 +18,45 @@ const KEY_TO_NOTE = {
   k: "C5",
 };
 
+// Simple dev presets for Galaxy0
+const GALAXY0_PRESETS = {
+  presetA: {
+    core: {
+      ground: { gain: 90, muted: false },
+      harmony: { gain: 65, muted: false },
+      atmos: { gain: 55, muted: false },
+    },
+    orbits: {
+      orbitA: { gain: 70, muted: false },
+      orbitB: { gain: 60, muted: false },
+      orbitC: { gain: 45, muted: false },
+    },
+    orbitAPattern: false,
+  },
+  presetB: {
+    core: {
+      ground: { gain: 55, muted: false },
+      harmony: { gain: 80, muted: false },
+      atmos: { gain: 75, muted: false },
+    },
+    orbits: {
+      orbitA: { gain: 50, muted: false },
+      orbitB: { gain: 70, muted: false },
+      orbitC: { gain: 65, muted: false },
+    },
+    orbitAPattern: true,
+  },
+};
+
 function App() {
   const [audioReady, setAudioReady] = useState(false);
   const [isPlayingDemo, setIsPlayingDemo] = useState(false);
   const [orbitAPatternOn, setOrbitAPatternOn] = useState(false);
 
-  // UI-side state for Core layers (0–100 for sliders)
-  const [coreLayers, setCoreLayers] = useState({
-    ground: { gain: 90, muted: false },
-    harmony: { gain: 65, muted: false },
-    atmos: { gain: 55, muted: false },
-  });
-
-  // UI-side state for Orbits (0–100 for sliders)
-  const [orbitLayers, setOrbitLayers] = useState({
-    orbitA: { gain: 70, muted: false },
-    orbitB: { gain: 70, muted: false },
-    orbitC: { gain: 70, muted: false },
-  });
+  // Start from Preset A values
+  const [activePreset, setActivePreset] = useState("presetA");
+  const [coreLayers, setCoreLayers] = useState(GALAXY0_PRESETS.presetA.core);
+  const [orbitLayers, setOrbitLayers] = useState(GALAXY0_PRESETS.presetA.orbits);
 
   // Keyboard → Core voice
   useEffect(() => {
@@ -69,18 +91,36 @@ function App() {
     };
   }, [audioReady]);
 
+  const syncGainsToEngine = (coreState, orbitState, orbitAPattern) => {
+    if (!audioReady) return;
+
+    // Core
+    Object.entries(coreState).forEach(([layerId, layer]) => {
+      omseEngine.setCoreLayerGain(layerId, layer.gain / 100);
+      omseEngine.setCoreLayerMute(layerId, !!layer.muted);
+    });
+
+    // Orbits
+    Object.entries(orbitState).forEach(([orbitId, layer]) => {
+      omseEngine.setOrbitGain(orbitId, layer.gain / 100);
+      omseEngine.setOrbitMute(orbitId, !!layer.muted);
+    });
+
+    // Orbit A pattern
+    if (orbitAPattern) {
+      omseEngine.startOrbitAPattern();
+    } else {
+      omseEngine.stopOrbitAPattern();
+    }
+  };
+
   const handleInitAudio = async () => {
     await omseEngine.startAudioContext();
     setAudioReady(true);
 
-    // Initialize engine-side gains to match UI state
-    omseEngine.setCoreLayerGain("ground", coreLayers.ground.gain / 100);
-    omseEngine.setCoreLayerGain("harmony", coreLayers.harmony.gain / 100);
-    omseEngine.setCoreLayerGain("atmos", coreLayers.atmos.gain / 100);
-
-    omseEngine.setOrbitGain("orbitA", orbitLayers.orbitA.gain / 100);
-    omseEngine.setOrbitGain("orbitB", orbitLayers.orbitB.gain / 100);
-    omseEngine.setOrbitGain("orbitC", orbitLayers.orbitC.gain / 100);
+    const preset = GALAXY0_PRESETS[activePreset];
+    syncGainsToEngine(preset.core, preset.orbits, preset.orbitAPattern);
+    setOrbitAPatternOn(!!preset.orbitAPattern);
   };
 
   const handlePlayTestScene = async () => {
@@ -90,60 +130,62 @@ function App() {
     setTimeout(() => setIsPlayingDemo(false), 9000);
   };
 
-  const handleLayerGainChange = (layerId, newPercent) => {
-    setCoreLayers((prev) => ({
-      ...prev,
-      [layerId]: { ...prev[layerId], gain: newPercent },
-    }));
+  const handleApplyPreset = (presetId) => {
+    const preset = GALAXY0_PRESETS[presetId];
+    if (!preset) return;
 
-    if (audioReady) {
-      const normalized = newPercent / 100;
-      omseEngine.setCoreLayerGain(layerId, normalized);
-    }
+    setActivePreset(presetId);
+    setCoreLayers(preset.core);
+    setOrbitLayers(preset.orbits);
+    setOrbitAPatternOn(!!preset.orbitAPattern);
+
+    syncGainsToEngine(preset.core, preset.orbits, preset.orbitAPattern);
+  };
+
+  const handleLayerGainChange = (layerId, newPercent) => {
+    setCoreLayers((prev) => {
+      const next = {
+        ...prev,
+        [layerId]: { ...prev[layerId], gain: newPercent },
+      };
+      syncGainsToEngine(next, orbitLayers, orbitAPatternOn);
+      return next;
+    });
   };
 
   const handleLayerMuteToggle = (layerId) => {
     setCoreLayers((prev) => {
       const current = prev[layerId];
-      const nextMuted = !current.muted;
-
-      if (audioReady) {
-        omseEngine.setCoreLayerMute(layerId, nextMuted);
-      }
-
-      return {
+      const next = {
         ...prev,
-        [layerId]: { ...current, muted: nextMuted },
+        [layerId]: { ...current, muted: !current.muted },
       };
+      syncGainsToEngine(next, orbitLayers, orbitAPatternOn);
+      return next;
     });
   };
 
   // Orbit mixer handlers
   const handleOrbitGainChange = (orbitId, newPercent) => {
-    setOrbitLayers((prev) => ({
-      ...prev,
-      [orbitId]: { ...prev[orbitId], gain: newPercent },
-    }));
-
-    if (audioReady) {
-      const normalized = newPercent / 100;
-      omseEngine.setOrbitGain(orbitId, normalized);
-    }
+    setOrbitLayers((prev) => {
+      const next = {
+        ...prev,
+        [orbitId]: { ...prev[orbitId], gain: newPercent },
+      };
+      syncGainsToEngine(coreLayers, next, orbitAPatternOn);
+      return next;
+    });
   };
 
   const handleOrbitMuteToggle = (orbitId) => {
     setOrbitLayers((prev) => {
       const current = prev[orbitId];
-      const nextMuted = !current.muted;
-
-      if (audioReady) {
-        omseEngine.setOrbitMute(orbitId, nextMuted);
-      }
-
-      return {
+      const next = {
         ...prev,
-        [orbitId]: { ...current, muted: nextMuted },
+        [orbitId]: { ...current, muted: !current.muted },
       };
+      syncGainsToEngine(coreLayers, next, orbitAPatternOn);
+      return next;
     });
   };
 
@@ -153,11 +195,7 @@ function App() {
 
     setOrbitAPatternOn((prev) => {
       const next = !prev;
-      if (next) {
-        omseEngine.startOrbitAPattern();
-      } else {
-        omseEngine.stopOrbitAPattern();
-      }
+      syncGainsToEngine(coreLayers, orbitLayers, next);
       return next;
     });
   };
@@ -169,6 +207,11 @@ function App() {
         isPlayingDemo={isPlayingDemo}
         onInitAudio={handleInitAudio}
         onPlayTestScene={handlePlayTestScene}
+      />
+
+      <GalaxyPresetBar
+        activePreset={activePreset}
+        onSelectPreset={handleApplyPreset}
       />
 
       <main className="universe">
