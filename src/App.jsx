@@ -2,8 +2,8 @@
 import { useEffect, useState } from "react";
 import { omseEngine } from "./engine/omseEngine";
 import { CoreMixer } from "./components/CoreMixer";
-import { OrbitMeter } from "./components/OrbitMeter";
 import { MasterMeter } from "./components/MasterMeter";
+import { VoiceCard } from "./components/VoiceCard";
 import "./App.css";
 
 const KEY_TO_NOTE = {
@@ -20,6 +20,7 @@ const KEY_TO_NOTE = {
 function App() {
   const [audioReady, setAudioReady] = useState(false);
   const [isPlayingDemo, setIsPlayingDemo] = useState(false);
+  const [orbitAPatternOn, setOrbitAPatternOn] = useState(false);
 
   // UI-side state for Core layers (0–100 for sliders)
   const [coreLayers, setCoreLayers] = useState({
@@ -146,6 +147,21 @@ function App() {
     });
   };
 
+  const handleOrbitPatternToggle = (orbitId) => {
+    if (!audioReady) return;
+    if (orbitId !== "orbitA") return;
+
+    setOrbitAPatternOn((prev) => {
+      const next = !prev;
+      if (next) {
+        omseEngine.startOrbitAPattern();
+      } else {
+        omseEngine.stopOrbitAPattern();
+      }
+      return next;
+    });
+  };
+
   return (
     <div className="app-root">
       <header className="top-bar">
@@ -211,6 +227,9 @@ function App() {
             layerState={orbitLayers.orbitA}
             onGainChange={handleOrbitGainChange}
             onToggleMute={handleOrbitMuteToggle}
+            supportsPattern
+            patternActive={orbitAPatternOn}
+            onTogglePattern={handleOrbitPatternToggle}
           />
           <VoiceCard
             id="orbitB"
@@ -232,71 +251,6 @@ function App() {
           />
         </section>
       </main>
-    </div>
-  );
-}
-
-function VoiceCard({
-  id,
-  name,
-  description,
-  audioReady,
-  layerState,
-  onGainChange,
-  onToggleMute,
-}) {
-  const handleSliderChange = (e) => {
-    const value = Number(e.target.value);
-    onGainChange(id, value);
-  };
-
-  const handleMuteClick = () => {
-    onToggleMute(id);
-  };
-
-  return (
-    <div className="voice-card">
-      <h3>{name}</h3>
-      <p className="desc">{description}</p>
-      <p className="status">
-        Status: <strong>Placeholder engine</strong>
-      </p>
-
-      <div className="orbit-meter-block">
-        <div className="orbit-meter-label-row">
-          <span className="orbit-meter-label">Activity</span>
-        </div>
-        <OrbitMeter orbitId={id} audioReady={audioReady} />
-      </div>
-
-      <div className="orbit-mixer">
-        <div className="orbit-mixer-label-row">
-          <span className="orbit-mixer-label">Level</span>
-          <span className="orbit-mixer-percent">{layerState.gain}%</span>
-        </div>
-        <div className="orbit-mixer-controls">
-          <input
-            type="range"
-            min={0}
-            max={100}
-            value={layerState.gain}
-            onChange={handleSliderChange}
-            disabled={!audioReady}
-            className="orbit-layer-slider"
-          />
-          <button
-            type="button"
-            onClick={handleMuteClick}
-            disabled={!audioReady}
-            className={
-              "orbit-layer-mute-btn" +
-              (layerState.muted ? " orbit-layer-mute-btn--active" : "")
-            }
-          >
-            {layerState.muted ? "Unmute" : "Mute"}
-          </button>
-        </div>
-      </div>
     </div>
   );
 }
