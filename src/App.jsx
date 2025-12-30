@@ -5,6 +5,7 @@ import { CoreMixer } from "./components/CoreMixer";
 import { VoiceCard } from "./components/VoiceCard";
 import { TopBar } from "./components/TopBar";
 import { GalaxyPresetBar } from "./components/GalaxyPresetBar";
+import { MASTER_PRESETS } from "./presets/masterPresets";
 import "./App.css";
 
 const KEY_TO_NOTE = {
@@ -18,47 +19,22 @@ const KEY_TO_NOTE = {
   k: "C5",
 };
 
-// Simple dev presets for Galaxy0
-const GALAXY0_PRESETS = {
-  presetA: {
-    core: {
-      ground: { gain: 90, muted: false },
-      harmony: { gain: 65, muted: false },
-      atmos: { gain: 55, muted: false },
-    },
-    orbits: {
-      orbitA: { gain: 70, muted: false },
-      orbitB: { gain: 60, muted: false },
-      orbitC: { gain: 45, muted: false },
-    },
-    orbitAPattern: false,
-  },
-  presetB: {
-    core: {
-      ground: { gain: 55, muted: false },
-      harmony: { gain: 80, muted: false },
-      atmos: { gain: 75, muted: false },
-    },
-    orbits: {
-      orbitA: { gain: 50, muted: false },
-      orbitB: { gain: 70, muted: false },
-      orbitC: { gain: 65, muted: false },
-    },
-    orbitAPattern: true,
-  },
-};
-
 function App() {
   const [audioReady, setAudioReady] = useState(false);
   const [isPlayingDemo, setIsPlayingDemo] = useState(false);
-  const [orbitAPatternOn, setOrbitAPatternOn] = useState(false);
 
-  // Start from Preset A values
   const [activePreset, setActivePreset] = useState("presetA");
-  const [coreLayers, setCoreLayers] = useState(GALAXY0_PRESETS.presetA.core);
-  const [orbitLayers, setOrbitLayers] = useState(GALAXY0_PRESETS.presetA.orbits);
+  const [coreLayers, setCoreLayers] = useState(MASTER_PRESETS.presetA.core);
+  const [orbitLayers, setOrbitLayers] = useState(MASTER_PRESETS.presetA.orbits);
+  const [orbitPatterns, setOrbitPatterns] = useState(
+    MASTER_PRESETS.presetA.patterns || {
+      orbitA: false,
+      orbitB: false,
+      orbitC: false,
+    }
+  );
 
-  // Keyboard → Core voice
+  // ----- Keyboard → Core voice -----
   useEffect(() => {
     const downKeys = new Set();
 
@@ -91,10 +67,11 @@ function App() {
     };
   }, [audioReady]);
 
-  const syncGainsToEngine = (coreState, orbitState, orbitAPattern) => {
+  // ----- Sync UI state → engine -----
+  const syncToEngine = (coreState, orbitState, patternState) => {
     if (!audioReady) return;
 
-    // Core
+    // Core layers
     Object.entries(coreState).forEach(([layerId, layer]) => {
       omseEngine.setCoreLayerGain(layerId, layer.gain / 100);
       omseEngine.setCoreLayerMute(layerId, !!layer.muted);
@@ -106,23 +83,29 @@ function App() {
       omseEngine.setOrbitMute(orbitId, !!layer.muted);
     });
 
-    // Orbit A pattern
-    if (orbitAPattern) {
-      omseEngine.startOrbitAPattern();
-    } else {
-      omseEngine.stopOrbitAPattern();
+    // Orbit patterns
+    if (patternState) {
+      Object.entries(patternState).forEach(([orbitId, enabled]) => {
+        omseEngine.setOrbitPattern(orbitId, !!enabled);
+      });
     }
   };
 
+  // ----- Audio init -----
   const handleInitAudio = async () => {
     await omseEngine.startAudioContext();
     setAudioReady(true);
 
-    const preset = GALAXY0_PRESETS[activePreset];
-    syncGainsToEngine(preset.core, preset.orbits, preset.orbitAPattern);
-    setOrbitAPatternOn(!!preset.orbitAPattern);
+    const preset = MASTER_PRESETS[activePreset];
+    if (!preset) return;
+
+    syncToEngine(preset.core, preset.orbits, preset.patterns);
+    setOrbitPatterns(
+      preset.patterns || { orbitA: false, orbitB: false, orbitC: false }
+    );
   };
 
+  // ----- Test scene -----
   const handlePlayTestScene = async () => {
     if (!audioReady) return;
     setIsPlayingDemo(true);
@@ -130,25 +113,29 @@ function App() {
     setTimeout(() => setIsPlayingDemo(false), 9000);
   };
 
+  // ----- Preset handling -----
   const handleApplyPreset = (presetId) => {
-    const preset = GALAXY0_PRESETS[presetId];
+    const preset = MASTER_PRESETS[presetId];
     if (!preset) return;
 
     setActivePreset(presetId);
     setCoreLayers(preset.core);
     setOrbitLayers(preset.orbits);
-    setOrbitAPatternOn(!!preset.orbitAPattern);
+    const nextPatterns =
+      preset.patterns || { orbitA: false, orbitB: false, orbitC: false };
+    setOrbitPatterns(nextPatterns);
 
-    syncGainsToEngine(preset.core, preset.orbits, preset.orbitAPattern);
+    syncToEngine(preset.core, preset.orbits, nextPatterns);
   };
 
+  // ----- Core mixer handlers -----
   const handleLayerGainChange = (layerId, newPercent) => {
     setCoreLayers((prev) => {
       const next = {
         ...prev,
         [layerId]: { ...prev[layerId], gain: newPercent },
       };
-      syncGainsToEngine(next, orbitLayers, orbitAPatternOn);
+      syncToEngine(next, orbitLayers, orbitPatterns);
       return next;
     });
   };
@@ -160,19 +147,19 @@ function App() {
         ...prev,
         [layerId]: { ...current, muted: !current.muted },
       };
-      syncGainsToEngine(next, orbitLayers, orbitAPatternOn);
+      syncToEngine(next, orbitLayers, orbitPatterns);
       return next;
     });
   };
 
-  // Orbit mixer handlers
+  // ----- Orbit mixer handlers -----
   const handleOrbitGainChange = (orbitId, newPercent) => {
     setOrbitLayers((prev) => {
       const next = {
         ...prev,
         [orbitId]: { ...prev[orbitId], gain: newPercent },
       };
-      syncGainsToEngine(coreLayers, next, orbitAPatternOn);
+      syncToEngine(coreLayers, next, orbitPatterns);
       return next;
     });
   };
@@ -184,22 +171,25 @@ function App() {
         ...prev,
         [orbitId]: { ...current, muted: !current.muted },
       };
-      syncGainsToEngine(coreLayers, next, orbitAPatternOn);
+      syncToEngine(coreLayers, next, orbitPatterns);
       return next;
     });
   };
 
   const handleOrbitPatternToggle = (orbitId) => {
     if (!audioReady) return;
-    if (orbitId !== "orbitA") return;
 
-    setOrbitAPatternOn((prev) => {
-      const next = !prev;
-      syncGainsToEngine(coreLayers, orbitLayers, next);
+    setOrbitPatterns((prev) => {
+      const next = {
+        ...prev,
+        [orbitId]: !prev[orbitId],
+      };
+      syncToEngine(coreLayers, orbitLayers, next);
       return next;
     });
   };
 
+  // ----- Render -----
   return (
     <div className="app-root">
       <TopBar
@@ -244,7 +234,7 @@ function App() {
             onGainChange={handleOrbitGainChange}
             onToggleMute={handleOrbitMuteToggle}
             supportsPattern
-            patternActive={orbitAPatternOn}
+            patternActive={orbitPatterns.orbitA}
             onTogglePattern={handleOrbitPatternToggle}
           />
           <VoiceCard
@@ -255,6 +245,9 @@ function App() {
             layerState={orbitLayers.orbitB}
             onGainChange={handleOrbitGainChange}
             onToggleMute={handleOrbitMuteToggle}
+            supportsPattern
+            patternActive={orbitPatterns.orbitB}
+            onTogglePattern={handleOrbitPatternToggle}
           />
           <VoiceCard
             id="orbitC"
@@ -264,6 +257,9 @@ function App() {
             layerState={orbitLayers.orbitC}
             onGainChange={handleOrbitGainChange}
             onToggleMute={handleOrbitMuteToggle}
+            supportsPattern
+            patternActive={orbitPatterns.orbitC}
+            onTogglePattern={handleOrbitPatternToggle}
           />
         </section>
       </main>

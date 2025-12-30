@@ -8,9 +8,28 @@ import * as Tone from "tone";
  * - Core 3-layer voice (ground, harmony, atmos)
  * - Three Orbit voices (A/B/C)
  * - Master bus + meters + spectrum
- * - Orbit A simple pattern
+ * - Orbit patterns for A, B, C
  * - Helper getters for UI meters & spectrum
  */
+
+// Simple pattern configs per orbit
+const ORBIT_PATTERN_CONFIG = {
+  orbitA: {
+    notes: ["C5", "E5", "G5", "B4"],
+    interval: "8n",
+    duration: "0.22",
+  },
+  orbitB: {
+    notes: ["G4", "D5", "F4", "A4"],
+    interval: "4n",
+    duration: "0.3",
+  },
+  orbitC: {
+    notes: ["C3", "G3", "D3", "A2"],
+    interval: "2n",
+    duration: "0.5",
+  },
+};
 
 class OmseEngine {
   constructor() {
@@ -19,15 +38,11 @@ class OmseEngine {
     // ----- MASTER BUS -----
     this.masterGain = new Tone.Gain(0.8);
 
-    // Level meter for master (0..1-ish, via Tone.Meter)
-    this.masterMeter = new Tone.Meter({
-      smoothing: 0.8,
-    });
+    // Use FFT analysers; we'll derive RMS-like levels in code
+    this.masterAnalyser = new Tone.Analyser("fft", 64);
+    this.masterFFT = new Tone.Analyser("fft", 128);
 
-    // FFT analyser for spectrum (frequency domain)
-    this.masterFFT = new Tone.Analyser("fft", 256);
-
-    this.masterGain.connect(this.masterMeter);
+    this.masterGain.connect(this.masterAnalyser);
     this.masterGain.connect(this.masterFFT);
     this.masterGain.toDestination();
 
@@ -47,7 +62,7 @@ class OmseEngine {
           release: 0.8,
         }),
         atmos: this._makeCoreLayer({
-          octaveOffset: 12, // air
+          octaveOffset: 12, // air / shimmer
           volume: -16,
           attack: 0.4,
           release: 2.5,
@@ -62,23 +77,29 @@ class OmseEngine {
       orbitC: this._makeOrbitVoice(),
     };
 
-    this.orbitAPattern = null;
+    // Pattern loops per orbit
+    this.orbitLoops = {
+      orbitA: null,
+      orbitB: null,
+      orbitC: null,
+    };
+    this.orbitPatternStep = {
+      orbitA: 0,
+      orbitB: 0,
+      orbitC: 0,
+    };
+
+    this.transportStarted = false;
   }
 
   // ---------- INTERNAL BUILDERS ----------
 
   _makeCoreLayer(options) {
     const gain = new Tone.Gain(0.9).connect(this.masterGain);
+    const analyser = new Tone.Analyser("fft", 32);
+    gain.connect(analyser);
 
-    // Per-layer level meter
-    const meter = new Tone.Meter({
-      smoothing: 0.8,
-    });
-    gain.connect(meter);
-
-    // Polyphonic synth for chords
-    const synth = new Tone.PolySynth(Tone.Synth, {
-      maxPolyphony: 8,
+    const synth = new Tone.Synth({
       oscillator: { type: "triangle" },
       envelope: {
         attack: options.attack ?? 0.05,
@@ -93,7 +114,7 @@ class OmseEngine {
     return {
       synth,
       gain,
-      meter,
+      analyser,
       octaveOffset: options.octaveOffset ?? 0,
       muted: false,
       currentGain: 1,
@@ -102,11 +123,8 @@ class OmseEngine {
 
   _makeOrbitVoice() {
     const gain = new Tone.Gain(0.7).connect(this.masterGain);
-
-    const meter = new Tone.Meter({
-      smoothing: 0.8,
-    });
-    gain.connect(meter);
+    const analyser = new Tone.Analyser("fft", 32);
+    gain.connect(analyser);
 
     const synth = new Tone.Synth({
       oscillator: { type: "sawtooth" },
@@ -123,10 +141,17 @@ class OmseEngine {
     return {
       synth,
       gain,
-      meter,
+      analyser,
       muted: false,
       currentGain: 1,
     };
+  }
+
+  _ensureTransport() {
+    if (!this.transportStarted) {
+      Tone.Transport.start();
+      this.transportStarted = true;
+    }
   }
 
   // ---------- LIFECYCLE ----------
@@ -181,12 +206,10 @@ class OmseEngine {
     const now = Tone.now();
 
     if (voiceId === "core") {
-      // Trigger all three Core layers with octave offsets (poly)
+      // Trigger all three Core layers with octave offsets
       Object.values(this.core.layers).forEach((layer) => {
-        const playedNote = Tone.Frequency(note)
-          .transpose(layer.octaveOffset)
-          .toNote();
-        layer.synth.triggerAttack(playedNote, now);
+        const freq = Tone.Frequency(note).transpose(layer.octaveOffset);
+        layer.synth.triggerAttack(freq, now);
       });
       return;
     }
@@ -203,19 +226,15 @@ class OmseEngine {
     const now = Tone.now();
 
     if (voiceId === "core") {
-      // Release only this note (per layer)
       Object.values(this.core.layers).forEach((layer) => {
-        const playedNote = Tone.Frequency(note)
-          .transpose(layer.octaveOffset)
-          .toNote();
-        layer.synth.triggerRelease(playedNote, now);
+        layer.synth.triggerRelease(now);
       });
       return;
     }
 
     const orbit = this.orbits[voiceId];
     if (orbit) {
-      orbit.synth.triggerRelease(note, now);
+      orbit.synth.triggerRelease(now);
     }
   }
 
@@ -230,12 +249,10 @@ class OmseEngine {
     chord.forEach((n, index) => {
       const t = now + index * 0.75;
 
-      // Core chord swell (still poly)
+      // Core chord swell
       Object.values(this.core.layers).forEach((layer) => {
-        const playedNote = Tone.Frequency(n)
-          .transpose(layer.octaveOffset)
-          .toNote();
-        layer.synth.triggerAttackRelease(playedNote, "0.7", t);
+        const freq = Tone.Frequency(n).transpose(layer.octaveOffset);
+        layer.synth.triggerAttackRelease(freq, "0.7", t);
       });
 
       // Orbit A accent
@@ -245,67 +262,74 @@ class OmseEngine {
     return new Promise((resolve) => setTimeout(resolve, 4000));
   }
 
-  // ---------- ORBIT A PATTERN ----------
+  // ---------- ORBIT PATTERNS (A, B, C) ----------
 
-  startOrbitAPattern() {
+  setOrbitPattern(orbitId, enabled) {
     if (!this.started) return;
-    if (this.orbitAPattern) return;
+    if (!this.orbits[orbitId]) return;
 
-    const notes = ["C5", "E5", "G5", "B4"];
-    let step = 0;
+    const currentLoop = this.orbitLoops[orbitId];
 
-    this.orbitAPattern = new Tone.Loop((time) => {
-      const note = notes[step % notes.length];
-      this.orbits.orbitA.synth.triggerAttackRelease(note, "0.22", time);
-      step++;
-    }, "8n").start(0);
+    if (enabled) {
+      if (currentLoop) return; // already running
 
-    Tone.Transport.start();
+      const config = ORBIT_PATTERN_CONFIG[orbitId];
+      if (!config) return;
+
+      const { notes, interval, duration } = config;
+      let step = this.orbitPatternStep[orbitId] ?? 0;
+
+      const loop = new Tone.Loop((time) => {
+        const note = notes[step % notes.length];
+        this.orbits[orbitId].synth.triggerAttackRelease(note, duration, time);
+        step += 1;
+        this.orbitPatternStep[orbitId] = step;
+      }, interval).start(0);
+
+      this.orbitLoops[orbitId] = loop;
+      this._ensureTransport();
+    } else {
+      if (!currentLoop) return;
+      currentLoop.stop();
+      currentLoop.dispose();
+      this.orbitLoops[orbitId] = null;
+    }
   }
 
-  stopOrbitAPattern() {
-    if (this.orbitAPattern) {
-      this.orbitAPattern.stop();
-      this.orbitAPattern.dispose();
-      this.orbitAPattern = null;
+  // ---------- METER HELPERS ----------
+
+  _rmsishFromAnalyser(analyser) {
+    // FFT data in dB; convert to 0–1 "energy" for meters
+    const values = analyser.getValue();
+    if (!values.length) return 0;
+
+    let sum = 0;
+    for (let i = 0; i < values.length; i++) {
+      const v = values[i];
+      if (!Number.isFinite(v)) continue;
+      // Clamp -90 dB to 0 dB, normalize to 0..1
+      const clamped = Math.max(-90, Math.min(0, v));
+      const norm = (clamped + 90) / 90; // 0 at -90, 1 at 0
+      sum += norm * norm; // square for energy
     }
-    // Leave Transport running for future patterns.
-  }
-
-  // ---------- METER HELPERS (for Core, Orbits, Master) ----------
-
-  _meterToLevel(meter) {
-    if (!meter) return 0;
-    const value = meter.getValue();
-
-    if (!Number.isFinite(value)) return 0;
-
-    // If this looks like dB (-100..0), map to 0..1
-    if (value <= 0 && value >= -100) {
-      const norm = (value + 60) / 60; // treat -60 dB as ~0
-      const clamped = Math.max(0, Math.min(1, norm));
-      return clamped ** 1.4;
-    }
-
-    // Otherwise assume 0..1 linear
-    const clamped = Math.max(0, Math.min(1, value));
-    return clamped ** 1.4;
+    const mean = sum / values.length;
+    return Math.sqrt(mean); // back to linear-ish 0..1
   }
 
   getCoreLayerLevel(id) {
     const layer = this.core.layers[id];
     if (!layer) return 0;
-    return this._meterToLevel(layer.meter);
+    return this._rmsishFromAnalyser(layer.analyser);
   }
 
   getOrbitLevel(id) {
     const voice = this.orbits[id];
     if (!voice) return 0;
-    return this._meterToLevel(voice.meter);
+    return this._rmsishFromAnalyser(voice.analyser);
   }
 
   getMasterLevel() {
-    return this._meterToLevel(this.masterMeter);
+    return this._rmsishFromAnalyser(this.masterAnalyser);
   }
 
   // ---------- SPECTRUM FOR MASTER OUTPUT ----------
@@ -321,7 +345,6 @@ class OmseEngine {
         arr.push(0);
         continue;
       }
-      // Clamp -90 dB (silent-ish) to 0 dB (loud)
       const clamped = Math.max(-90, Math.min(0, v));
       const norm = (clamped + 90) / 90; // 0 at -90, 1 at 0
       arr.push(norm);
