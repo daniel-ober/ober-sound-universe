@@ -16,6 +16,7 @@ import * as Tone from "tone";
  *
  * Controls:
  *  - Per-layer gain and mute control for Core layers.
+ *  - Per-layer FFT analysers for visual meters.
  *  - noteOn/noteOff for Core + Orbits.
  *  - playTestScene uses all three Core layers + Orbits.
  */
@@ -82,11 +83,18 @@ class OMSEEngine {
 
       const gain = new Tone.Gain(initialGain);
       synth.connect(gain);
+
+      // FFT analyser for this layer
+      const analyser = new Tone.Analyser("fft", 64);
+      gain.connect(analyser);
+
+      // Route to Core buss
       gain.connect(this.core.bussGain);
 
       return {
         synth,
         gain,
+        analyser,
         baseGain: initialGain,
         muted: false,
       };
@@ -128,7 +136,9 @@ class OMSEEngine {
 
       const atmosNoise = new Tone.Noise("pink");
       const atmosFilter = new Tone.Filter(800, "lowpass");
-      const atmosNoiseGain = new Tone.Gain(0.2); // level of noise vs pad
+
+      // MUCH lower noise contribution now
+      const atmosNoiseGain = new Tone.Gain(0.04);
 
       // Shared gain node for both synth + noise so mixer/mute affect everything
       const atmosLayerGain = new Tone.Gain(atmosInitialGain);
@@ -139,6 +149,10 @@ class OMSEEngine {
       atmosFilter.connect(atmosNoiseGain);
       atmosNoiseGain.connect(atmosLayerGain);
 
+      // FFT analyser for the Atmos layer (after synth+noise mix)
+      const atmosAnalyser = new Tone.Analyser("fft", 64);
+      atmosLayerGain.connect(atmosAnalyser);
+
       atmosLayerGain.connect(this.core.bussGain);
 
       atmosNoise.start();
@@ -146,6 +160,7 @@ class OMSEEngine {
       this.core.layers.atmos = {
         synth: atmosSynth,
         gain: atmosLayerGain,
+        analyser: atmosAnalyser,
         baseGain: atmosInitialGain,
         muted: false,
       };
@@ -210,7 +225,7 @@ class OMSEEngine {
         harmony.synth.triggerAttack(note);
       }
 
-      // Atmos = pad + noise at original pitch
+      // Atmos = pad at original pitch
       if (atmos) {
         atmos.synth.triggerAttack(note);
       }
@@ -278,6 +293,25 @@ class OMSEEngine {
 
     layer.muted = muted;
     layer.gain.gain.value = muted ? 0 : layer.baseGain;
+  }
+
+  /**
+   * Get FFT data (Float32Array → plain array) for a Core layer.
+   * Returns null if analyser not ready or layer effectively silent.
+   */
+  getCoreLayerFFT(layerId) {
+    if (!this.initialized) return null;
+    const layer = this.core.layers[layerId];
+    if (!layer || !layer.analyser) return null;
+
+    // If muted or very low gain, treat as silence for visuals
+    const currentGain = layer.gain?.gain?.value ?? 0;
+    if (layer.muted || currentGain < 0.05) {
+      return null;
+    }
+
+    const values = layer.analyser.getValue();
+    return Array.from(values);
   }
 
   /**

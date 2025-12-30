@@ -1,4 +1,5 @@
 // src/components/CoreMixer.jsx
+import { CoreLayerMeter } from "./CoreLayerMeter";
 
 /**
  * CoreMixer
@@ -79,6 +80,7 @@ function CoreLayerRow({
         <span className="core-layer-name">{label}</span>
         <span className="core-layer-percent">{layerState.gain}%</span>
       </div>
+
       <div className="core-layer-controls">
         <input
           type="range"
@@ -101,6 +103,8 @@ function CoreLayerRow({
           {layerState.muted ? "Unmute" : "Mute"}
         </button>
       </div>
+
+      <CoreLayerMeter layerId={id} audioReady={audioReady} />
     </div>
   );
 }
