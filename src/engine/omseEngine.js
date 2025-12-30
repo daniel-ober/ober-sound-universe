@@ -12,11 +12,13 @@ import * as Tone from "tone";
  *  - Core layers route into a Core buss, which feeds the master buss.
  *
  * Orbits:
- *  - orbitA / orbitB / orbitC remain simple placeholder synth voices for now.
+ *  - orbitA / orbitB / orbitC are simple placeholder synth voices for now,
+ *    each with their own gain + mute controls.
  *
  * Controls:
  *  - Per-layer gain and mute control for Core layers.
- *  - Per-layer FFT analysers for visual meters.
+ *  - Per-orbit gain and mute control.
+ *  - Per-layer FFT analysers for Core meters.
  *  - noteOn/noteOff for Core + Orbits.
  *  - playTestScene uses all three Core layers + Orbits.
  */
@@ -40,7 +42,7 @@ class OMSEEngine {
       },
     };
 
-    // Orbit voices (simple for now)
+    // Orbit voices
     this.voices = {
       orbitA: null,
       orbitB: null,
@@ -137,7 +139,7 @@ class OMSEEngine {
       const atmosNoise = new Tone.Noise("pink");
       const atmosFilter = new Tone.Filter(800, "lowpass");
 
-      // MUCH lower noise contribution now
+      // Low noise contribution so meters aren’t going crazy at idle
       const atmosNoiseGain = new Tone.Gain(0.04);
 
       // Shared gain node for both synth + noise so mixer/mute affect everything
@@ -167,7 +169,7 @@ class OMSEEngine {
     }
 
     // ----- ORBIT VOICES (simple placeholders for now) -----
-    const makeOrbitVoice = () => {
+    const makeOrbitVoice = ({ initialGain = 0.7 } = {}) => {
       const synth = new Tone.PolySynth(Tone.Synth, {
         oscillator: { type: "sawtooth" },
         envelope: {
@@ -178,16 +180,21 @@ class OMSEEngine {
         },
       });
 
-      const gain = new Tone.Gain(0.7);
+      const gain = new Tone.Gain(initialGain);
       synth.connect(gain);
       gain.connect(this.reverb);
 
-      return { synth, gain };
+      return {
+        synth,
+        gain,
+        baseGain: initialGain,
+        muted: false,
+      };
     };
 
-    this.voices.orbitA = makeOrbitVoice();
-    this.voices.orbitB = makeOrbitVoice();
-    this.voices.orbitC = makeOrbitVoice();
+    this.voices.orbitA = makeOrbitVoice({ initialGain: 0.7 });
+    this.voices.orbitB = makeOrbitVoice({ initialGain: 0.7 });
+    this.voices.orbitC = makeOrbitVoice({ initialGain: 0.7 });
 
     // Simple tempo baseline
     Tone.Transport.bpm.value = 80;
@@ -312,6 +319,29 @@ class OMSEEngine {
 
     const values = layer.analyser.getValue();
     return Array.from(values);
+  }
+
+  /**
+   * Orbit mixer controls
+   */
+  setOrbitGain(voiceId, gainValue) {
+    if (!this.initialized) return;
+    const voice = this.voices[voiceId];
+    if (!voice || !voice.gain) return;
+
+    voice.baseGain = gainValue;
+    if (!voice.muted) {
+      voice.gain.gain.value = gainValue;
+    }
+  }
+
+  setOrbitMute(voiceId, muted) {
+    if (!this.initialized) return;
+    const voice = this.voices[voiceId];
+    if (!voice || !voice.gain) return;
+
+    voice.muted = muted;
+    voice.gain.gain.value = muted ? 0 : voice.baseGain ?? 0.7;
   }
 
   /**

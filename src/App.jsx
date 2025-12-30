@@ -26,6 +26,13 @@ function App() {
     atmos: { gain: 55, muted: false },
   });
 
+  // UI-side state for Orbits (0–100 for sliders)
+  const [orbitLayers, setOrbitLayers] = useState({
+    orbitA: { gain: 70, muted: false },
+    orbitB: { gain: 70, muted: false },
+    orbitC: { gain: 70, muted: false },
+  });
+
   // Keyboard → Core voice
   useEffect(() => {
     const downKeys = new Set();
@@ -67,6 +74,10 @@ function App() {
     omseEngine.setCoreLayerGain("ground", coreLayers.ground.gain / 100);
     omseEngine.setCoreLayerGain("harmony", coreLayers.harmony.gain / 100);
     omseEngine.setCoreLayerGain("atmos", coreLayers.atmos.gain / 100);
+
+    omseEngine.setOrbitGain("orbitA", orbitLayers.orbitA.gain / 100);
+    omseEngine.setOrbitGain("orbitB", orbitLayers.orbitB.gain / 100);
+    omseEngine.setOrbitGain("orbitC", orbitLayers.orbitC.gain / 100);
   };
 
   const handlePlayTestScene = async () => {
@@ -100,6 +111,35 @@ function App() {
       return {
         ...prev,
         [layerId]: { ...current, muted: nextMuted },
+      };
+    });
+  };
+
+  // Orbit mixer handlers
+  const handleOrbitGainChange = (orbitId, newPercent) => {
+    setOrbitLayers((prev) => ({
+      ...prev,
+      [orbitId]: { ...prev[orbitId], gain: newPercent },
+    }));
+
+    if (audioReady) {
+      const normalized = newPercent / 100;
+      omseEngine.setOrbitGain(orbitId, normalized);
+    }
+  };
+
+  const handleOrbitMuteToggle = (orbitId) => {
+    setOrbitLayers((prev) => {
+      const current = prev[orbitId];
+      const nextMuted = !current.muted;
+
+      if (audioReady) {
+        omseEngine.setOrbitMute(orbitId, nextMuted);
+      }
+
+      return {
+        ...prev,
+        [orbitId]: { ...current, muted: nextMuted },
       };
     });
   };
@@ -157,16 +197,57 @@ function App() {
         </section>
 
         <section className="orbits-grid">
-          <VoiceCard name="Orbit A" description="First orbiting voice." />
-          <VoiceCard name="Orbit B" description="Second orbiting voice." />
-          <VoiceCard name="Orbit C" description="Third orbiting voice." />
+          <VoiceCard
+            id="orbitA"
+            name="Orbit A"
+            description="First orbiting voice."
+            audioReady={audioReady}
+            layerState={orbitLayers.orbitA}
+            onGainChange={handleOrbitGainChange}
+            onToggleMute={handleOrbitMuteToggle}
+          />
+          <VoiceCard
+            id="orbitB"
+            name="Orbit B"
+            description="Second orbiting voice."
+            audioReady={audioReady}
+            layerState={orbitLayers.orbitB}
+            onGainChange={handleOrbitGainChange}
+            onToggleMute={handleOrbitMuteToggle}
+          />
+          <VoiceCard
+            id="orbitC"
+            name="Orbit C"
+            description="Third orbiting voice."
+            audioReady={audioReady}
+            layerState={orbitLayers.orbitC}
+            onGainChange={handleOrbitGainChange}
+            onToggleMute={handleOrbitMuteToggle}
+          />
         </section>
       </main>
     </div>
   );
 }
 
-function VoiceCard({ name, description }) {
+function VoiceCard({
+  id,
+  name,
+  description,
+  audioReady,
+  layerState,
+  onGainChange,
+  onToggleMute,
+}) {
+  const handleSliderChange = (e) => {
+    const value = Number(e.target.value);
+    onGainChange(id, value);
+  };
+
+  const handleMuteClick = () => {
+    onToggleMute(id);
+  };
+
   return (
     <div className="voice-card">
       <h3>{name}</h3>
@@ -174,6 +255,35 @@ function VoiceCard({ name, description }) {
       <p className="status">
         Status: <strong>Placeholder engine</strong>
       </p>
+
+      <div className="orbit-mixer">
+        <div className="orbit-mixer-label-row">
+          <span className="orbit-mixer-label">Level</span>
+          <span className="orbit-mixer-percent">{layerState.gain}%</span>
+        </div>
+        <div className="orbit-mixer-controls">
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={layerState.gain}
+            onChange={handleSliderChange}
+            disabled={!audioReady}
+            className="orbit-layer-slider"
+          />
+          <button
+            type="button"
+            onClick={handleMuteClick}
+            disabled={!audioReady}
+            className={
+              "orbit-layer-mute-btn" +
+              (layerState.muted ? " orbit-layer-mute-btn--active" : "")
+            }
+          >
+            {layerState.muted ? "Unmute" : "Mute"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
