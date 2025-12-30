@@ -2,8 +2,8 @@
 import { useEffect, useState } from "react";
 import { omseEngine } from "./engine/omseEngine";
 import { CoreMixer } from "./components/CoreMixer";
-import { MasterMeter } from "./components/MasterMeter";
 import { VoiceCard } from "./components/VoiceCard";
+import { TopBar } from "./components/TopBar";
 import "./App.css";
 
 const KEY_TO_NOTE = {
@@ -164,39 +164,12 @@ function App() {
 
   return (
     <div className="app-root">
-      <header className="top-bar">
-        <div className="brand">
-          <span className="brand-main">Ober Instruments</span>
-          <span className="brand-sub">
-            Ober Sound Universe · Galaxy0 (dev)
-          </span>
-        </div>
-
-        <div className="top-controls">
-          <div className="top-controls-left">
-            {!audioReady ? (
-              <button className="primary-btn" onClick={handleInitAudio}>
-                Initialize Audio
-              </button>
-            ) : (
-              <button
-                className="secondary-btn"
-                onClick={handlePlayTestScene}
-                disabled={isPlayingDemo}
-              >
-                {isPlayingDemo ? "Playing Scene…" : "Play Test Scene"}
-              </button>
-            )}
-            <span className="hint">
-              Play Core with your keyboard: A–K (C4 → C5)
-            </span>
-          </div>
-
-          <div className="top-controls-right">
-            <MasterMeter audioReady={audioReady} />
-          </div>
-        </div>
-      </header>
+      <TopBar
+        audioReady={audioReady}
+        isPlayingDemo={isPlayingDemo}
+        onInitAudio={handleInitAudio}
+        onPlayTestScene={handlePlayTestScene}
+      />
 
       <main className="universe">
         <section className="core-panel">
