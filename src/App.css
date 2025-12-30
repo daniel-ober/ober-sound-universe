@@ -133,3 +133,71 @@
   font-size: 15px;
   margin-bottom: 4px;
 }
+
+/* Core mixer */
+
+.core-mixer {
+  margin-top: 20px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(148, 163, 184, 0.4);
+}
+
+.core-mixer h3 {
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+.core-mixer-hint {
+  font-size: 11px;
+  color: #9ca3af;
+  margin-bottom: 10px;
+}
+
+.core-layer-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 0;
+}
+
+.core-layer-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.core-layer-name {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.core-layer-percent {
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+.core-layer-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.core-layer-slider {
+  flex: 1;
+}
+
+.core-layer-mute-btn {
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.8);
+  padding: 4px 10px;
+  font-size: 11px;
+  background: #020617;
+  color: #e5e7eb;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.core-layer-mute-btn--active {
+  background: #7f1d1d;
+  border-color: #fecaca;
+}

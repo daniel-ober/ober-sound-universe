@@ -4,13 +4,20 @@ import * as Tone from "tone";
 /**
  * OMSE - Ober MotionSynth Engine (prototype)
  *
- * This version implements a 3-layer Core voice:
- *  - coreGround
- *  - coreHarmony
- *  - coreAtmos
+ * Core:
+ *  - 3-layer Core voice:
+ *      • ground  = deep low foundation (sine, one octave down)
+ *      • harmony = mid-range musical body (sawtooth, original pitch)
+ *      • atmos   = airy pad + pink noise wash (original pitch)
+ *  - Core layers route into a Core buss, which feeds the master buss.
  *
- * All Core layers route into a Core buss, which then feeds the master buss.
- * Orbits remain simple placeholder synth voices for now.
+ * Orbits:
+ *  - orbitA / orbitB / orbitC remain simple placeholder synth voices for now.
+ *
+ * Controls:
+ *  - Per-layer gain and mute control for Core layers.
+ *  - noteOn/noteOff for Core + Orbits.
+ *  - playTestScene uses all three Core layers + Orbits.
  */
 
 class OMSEEngine {
@@ -55,43 +62,94 @@ class OMSEEngine {
     this.core.bussGain = new Tone.Gain(1.0);
     this.core.bussGain.connect(this.reverb);
 
-    // Helper: create a core layer synth
-    const makeCoreLayer = ({ oscType = "sine", attack = 0.3, release = 3 }) => {
+    // Helper: create a core layer synth (ground / harmony)
+    const makeCoreLayer = ({
+      oscType = "sine",
+      attack = 0.3,
+      decay = 0.5,
+      release = 3,
+      initialGain = 0.8,
+    }) => {
       const synth = new Tone.PolySynth(Tone.Synth, {
         oscillator: { type: oscType },
         envelope: {
           attack,
-          decay: 0.5,
+          decay,
           sustain: 0.9,
           release,
         },
       });
 
-      const gain = new Tone.Gain(0.8);
+      const gain = new Tone.Gain(initialGain);
       synth.connect(gain);
       gain.connect(this.core.bussGain);
 
-      return { synth, gain };
+      return {
+        synth,
+        gain,
+        baseGain: initialGain,
+        muted: false,
+      };
     };
 
-    // Core layers
+    // ----- CORE LAYERS -----
+
+    // Ground — deep, smooth low foundation (sine; we play it one octave down)
     this.core.layers.ground = makeCoreLayer({
       oscType: "sine",
       attack: 0.4,
+      decay: 0.5,
       release: 4,
+      initialGain: 0.9,
     });
 
+    // Harmony — brighter mid-range body (sawtooth at played pitch)
     this.core.layers.harmony = makeCoreLayer({
-      oscType: "triangle",
-      attack: 0.6,
-      release: 5,
+      oscType: "sawtooth",
+      attack: 0.2,
+      decay: 0.4,
+      release: 3.5,
+      initialGain: 0.65,
     });
 
-    this.core.layers.atmos = makeCoreLayer({
-      oscType: "sine",
-      attack: 1.2,
-      release: 7,
-    });
+    // Atmos — airy pad + pink noise wash (original pitch)
+    {
+      const atmosInitialGain = 0.55;
+
+      const atmosSynth = new Tone.PolySynth(Tone.Synth, {
+        oscillator: { type: "sine" },
+        envelope: {
+          attack: 2.5,
+          decay: 1.5,
+          sustain: 0.9,
+          release: 8,
+        },
+      });
+
+      const atmosNoise = new Tone.Noise("pink");
+      const atmosFilter = new Tone.Filter(800, "lowpass");
+      const atmosNoiseGain = new Tone.Gain(0.2); // level of noise vs pad
+
+      // Shared gain node for both synth + noise so mixer/mute affect everything
+      const atmosLayerGain = new Tone.Gain(atmosInitialGain);
+
+      atmosSynth.connect(atmosLayerGain);
+
+      atmosNoise.connect(atmosFilter);
+      atmosFilter.connect(atmosNoiseGain);
+      atmosNoiseGain.connect(atmosLayerGain);
+
+      atmosLayerGain.connect(this.core.bussGain);
+
+      atmosNoise.start();
+
+      this.core.layers.atmos = {
+        synth: atmosSynth,
+        gain: atmosLayerGain,
+        baseGain: atmosInitialGain,
+        muted: false,
+      };
+    }
 
     // ----- ORBIT VOICES (simple placeholders for now) -----
     const makeOrbitVoice = () => {
@@ -139,11 +197,24 @@ class OMSEEngine {
     if (!this.started) return;
 
     if (voiceId === "core") {
-      // Trigger all core layers for now
       const { ground, harmony, atmos } = this.core.layers;
-      if (ground) ground.synth.triggerAttack(note);
-      if (harmony) harmony.synth.triggerAttack(note);
-      if (atmos) atmos.synth.triggerAttack(note);
+
+      // Ground = one octave lower
+      if (ground) {
+        const lowNote = Tone.Frequency(note).transpose(-12).toNote();
+        ground.synth.triggerAttack(lowNote);
+      }
+
+      // Harmony = original pitch, brighter timbre (sawtooth)
+      if (harmony) {
+        harmony.synth.triggerAttack(note);
+      }
+
+      // Atmos = pad + noise at original pitch
+      if (atmos) {
+        atmos.synth.triggerAttack(note);
+      }
+
       return;
     }
 
@@ -158,9 +229,20 @@ class OMSEEngine {
 
     if (voiceId === "core") {
       const { ground, harmony, atmos } = this.core.layers;
-      if (ground) ground.synth.triggerRelease(note);
-      if (harmony) harmony.synth.triggerRelease(note);
-      if (atmos) atmos.synth.triggerRelease(note);
+
+      if (ground) {
+        const lowNote = Tone.Frequency(note).transpose(-12).toNote();
+        ground.synth.triggerRelease(lowNote);
+      }
+
+      if (harmony) {
+        harmony.synth.triggerRelease(note);
+      }
+
+      if (atmos) {
+        atmos.synth.triggerRelease(note);
+      }
+
       return;
     }
 
@@ -168,6 +250,34 @@ class OMSEEngine {
     if (!voice) return;
 
     voice.synth.triggerRelease(note);
+  }
+
+  /**
+   * Adjust Core layer gain.
+   * layerId: 'ground' | 'harmony' | 'atmos'
+   * gainValue: 0.0 - 1.0
+   */
+  setCoreLayerGain(layerId, gainValue) {
+    if (!this.initialized) return;
+    const layer = this.core.layers[layerId];
+    if (!layer) return;
+
+    layer.baseGain = gainValue;
+    if (!layer.muted) {
+      layer.gain.gain.value = gainValue;
+    }
+  }
+
+  /**
+   * Mute/unmute Core layer while remembering its base gain.
+   */
+  setCoreLayerMute(layerId, muted) {
+    if (!this.initialized) return;
+    const layer = this.core.layers[layerId];
+    if (!layer) return;
+
+    layer.muted = muted;
+    layer.gain.gain.value = muted ? 0 : layer.baseGain;
   }
 
   /**
@@ -185,20 +295,24 @@ class OMSEEngine {
 
     const coreChord = ["C3", "G3", "D4"];
 
-    // Core: chord across all three layers with slightly different feels
     const { ground, harmony, atmos } = this.core.layers;
 
+    // Ground chord one octave lower
     if (ground) {
-      ground.synth.triggerAttackRelease(coreChord, 8, now + 0.1);
+      const lowChord = coreChord.map((n) =>
+        Tone.Frequency(n).transpose(-12).toNote()
+      );
+      ground.synth.triggerAttackRelease(lowChord, 8, now + 0.1);
     }
 
+    // Harmony chord at original pitch, brighter timbre
     if (harmony) {
-      // Slightly higher, more open voicing
-      harmony.synth.triggerAttackRelease(["E3", "B3", "F4"], 9, now + 0.2);
+      const harmonyChord = ["E3", "B3", "F4"];
+      harmony.synth.triggerAttackRelease(harmonyChord, 9, now + 0.2);
     }
 
+    // Atmos stays at played octave, slower + airy
     if (atmos) {
-      // Higher, slower, more pad-like
       atmos.synth.triggerAttackRelease(["C4", "G4"], 10, now + 0.5);
     }
 
