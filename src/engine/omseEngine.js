@@ -15,11 +15,14 @@ import * as Tone from "tone";
  *  - orbitA / orbitB / orbitC are simple placeholder synth voices for now,
  *    each with their own gain + mute controls and FFT analyser.
  *
+ * Visuals:
+ *  - Per-layer FFT analysers for Core meters.
+ *  - Per-orbit FFT analysers for Orbit meters.
+ *  - Master output FFT analyser for global output meter.
+ *
  * Controls:
  *  - Per-layer gain and mute control for Core layers.
  *  - Per-orbit gain and mute control.
- *  - Per-layer FFT analysers for Core meters.
- *  - Per-orbit FFT analysers for Orbit meters.
  *  - noteOn/noteOff for Core + Orbits.
  *  - playTestScene uses all three Core layers + Orbits.
  */
@@ -31,6 +34,8 @@ class OMSEEngine {
 
     // Global routing
     this.masterGain = null;
+    this.masterAnalyser = null;
+
     this.reverb = null;
 
     // Core layered voice
@@ -56,6 +61,10 @@ class OMSEEngine {
 
     // ----- MASTER BUS -----
     this.masterGain = new Tone.Gain(0.9).toDestination();
+
+    // Master output analyser (after master gain)
+    this.masterAnalyser = new Tone.Analyser("fft", 64);
+    this.masterGain.connect(this.masterAnalyser);
 
     this.reverb = new Tone.Reverb({
       decay: 6,
@@ -365,6 +374,28 @@ class OMSEEngine {
     }
 
     const values = voice.analyser.getValue();
+    return Array.from(values);
+  }
+
+  /**
+   * Get FFT data for the master output.
+   * Returns null if analyser not ready or output is effectively silent.
+   */
+  getMasterFFT() {
+    if (!this.initialized || !this.masterAnalyser) return null;
+
+    const values = this.masterAnalyser.getValue();
+    if (!values || !values.length) return null;
+
+    // Compute max dB and threshold like other meters
+    let maxDb = -Infinity;
+    for (let i = 0; i < values.length; i++) {
+      if (values[i] > maxDb) maxDb = values[i];
+    }
+    if (!Number.isFinite(maxDb)) maxDb = -100;
+
+    if (maxDb <= -75) return null;
+
     return Array.from(values);
   }
 

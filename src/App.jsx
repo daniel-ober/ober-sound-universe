@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { omseEngine } from "./engine/omseEngine";
 import { CoreMixer } from "./components/CoreMixer";
 import { OrbitMeter } from "./components/OrbitMeter";
+import { MasterMeter } from "./components/MasterMeter";
 import "./App.css";
 
 const KEY_TO_NOTE = {
@@ -156,12 +157,12 @@ function App() {
         </div>
 
         <div className="top-controls">
-          {!audioReady ? (
-            <button className="primary-btn" onClick={handleInitAudio}>
-              Initialize Audio
-            </button>
-          ) : (
-            <>
+          <div className="top-controls-left">
+            {!audioReady ? (
+              <button className="primary-btn" onClick={handleInitAudio}>
+                Initialize Audio
+              </button>
+            ) : (
               <button
                 className="secondary-btn"
                 onClick={handlePlayTestScene}
@@ -169,11 +170,15 @@ function App() {
               >
                 {isPlayingDemo ? "Playing Scene…" : "Play Test Scene"}
               </button>
-              <span className="hint">
-                Play Core with your keyboard: A–K (C4 → C5)
-              </span>
-            </>
-          )}
+            )}
+            <span className="hint">
+              Play Core with your keyboard: A–K (C4 → C5)
+            </span>
+          </div>
+
+          <div className="top-controls-right">
+            <MasterMeter audioReady={audioReady} />
+          </div>
         </div>
       </header>
 
