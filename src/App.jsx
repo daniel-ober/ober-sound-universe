@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { omseEngine } from "./engine/omseEngine";
 import { CoreMixer } from "./components/CoreMixer";
+import { OrbitMeter } from "./components/OrbitMeter";
 import "./App.css";
 
 const KEY_TO_NOTE = {
@@ -255,6 +256,13 @@ function VoiceCard({
       <p className="status">
         Status: <strong>Placeholder engine</strong>
       </p>
+
+      <div className="orbit-meter-block">
+        <div className="orbit-meter-label-row">
+          <span className="orbit-meter-label">Activity</span>
+        </div>
+        <OrbitMeter orbitId={id} audioReady={audioReady} />
+      </div>
 
       <div className="orbit-mixer">
         <div className="orbit-mixer-label-row">

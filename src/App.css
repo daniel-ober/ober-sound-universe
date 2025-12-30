@@ -267,3 +267,67 @@
   background: rgba(30, 64, 175, 0.9);
   border-color: rgba(129, 140, 248, 0.9);
 }
+
+.orbit-meter-block {
+  margin-top: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.orbit-meter-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.25rem;
+  font-size: 0.75rem;
+  color: rgba(148, 163, 184, 0.9);
+}
+
+.orbit-meter-label {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.orbit-mixer {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.orbit-mixer-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.4rem;
+  font-size: 0.75rem;
+  color: rgba(148, 163, 184, 0.9);
+}
+
+.orbit-mixer-percent {
+  font-variant-numeric: tabular-nums;
+}
+
+.orbit-mixer-controls {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.orbit-layer-slider {
+  flex: 1;
+  accent-color: #38bdf8;
+}
+
+.orbit-layer-mute-btn {
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: rgba(15, 23, 42, 0.8);
+  color: #e5e7eb;
+  font-size: 0.7rem;
+  padding: 0.35rem 0.75rem;
+  cursor: pointer;
+}
+
+.orbit-layer-mute-btn--active {
+  background: rgba(30, 64, 175, 0.9);
+  border-color: rgba(129, 140, 248, 0.9);
+}

@@ -13,12 +13,13 @@ import * as Tone from "tone";
  *
  * Orbits:
  *  - orbitA / orbitB / orbitC are simple placeholder synth voices for now,
- *    each with their own gain + mute controls.
+ *    each with their own gain + mute controls and FFT analyser.
  *
  * Controls:
  *  - Per-layer gain and mute control for Core layers.
  *  - Per-orbit gain and mute control.
  *  - Per-layer FFT analysers for Core meters.
+ *  - Per-orbit FFT analysers for Orbit meters.
  *  - noteOn/noteOff for Core + Orbits.
  *  - playTestScene uses all three Core layers + Orbits.
  */
@@ -184,9 +185,14 @@ class OMSEEngine {
       synth.connect(gain);
       gain.connect(this.reverb);
 
+      // Orbit FFT analyser for meters
+      const analyser = new Tone.Analyser("fft", 64);
+      gain.connect(analyser);
+
       return {
         synth,
         gain,
+        analyser,
         baseGain: initialGain,
         muted: false,
       };
@@ -342,6 +348,24 @@ class OMSEEngine {
 
     voice.muted = muted;
     voice.gain.gain.value = muted ? 0 : voice.baseGain ?? 0.7;
+  }
+
+  /**
+   * Get FFT data for an Orbit voice.
+   * Returns null if analyser not ready or the orbit is effectively silent.
+   */
+  getOrbitFFT(voiceId) {
+    if (!this.initialized) return null;
+    const voice = this.voices[voiceId];
+    if (!voice || !voice.analyser) return null;
+
+    const currentGain = voice.gain?.gain?.value ?? 0;
+    if (voice.muted || currentGain < 0.05) {
+      return null;
+    }
+
+    const values = voice.analyser.getValue();
+    return Array.from(values);
   }
 
   /**
