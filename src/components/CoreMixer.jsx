@@ -1,5 +1,6 @@
 // src/components/CoreMixer.jsx
 import { CoreLayerMeter } from "./CoreLayerMeter";
+import "./CoreMixer.css";
 
 /**
  * CoreMixer
