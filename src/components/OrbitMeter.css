@@ -1,5 +1,3 @@
-/* src/components/OrbitMeter.css */
-
 .orbit-meter {
   width: 100%;
   height: 6px;
@@ -9,11 +7,11 @@
   position: relative;
 }
 
-.orbit-meter-inner {
+.orbit-meter-fill {
+  width: 100%;
   height: 100%;
-  width: 0%;
   border-radius: inherit;
+  transform-origin: left;
   background: linear-gradient(90deg, #38bdf8, #6366f1, #ec4899);
-  transition: width 60ms linear;
   opacity: 0.9;
 }

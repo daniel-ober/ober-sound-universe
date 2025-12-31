@@ -2,355 +2,408 @@
 import * as Tone from "tone";
 
 /**
- * OMSE: Ober MotionSynth Engine
- *
- * Responsibilities:
- * - Core 3-layer voice (ground, harmony, atmos)
- * - Three Orbit voices (A/B/C)
- * - Master bus + meters + spectrum
- * - Orbit patterns for A, B, C
- * - Helper getters for UI meters & spectrum
+ * Helper to build a smoothed, 0–1 meter
  */
+function makeMeter() {
+  return new Tone.Meter({
+    channels: 1,
+    smoothing: 0.8,
+    normalRange: true, // 🔥 gives us a 0–1 range instead of dB
+  });
+}
 
-// Simple pattern configs per orbit
-const ORBIT_PATTERN_CONFIG = {
-  orbitA: {
-    notes: ["C5", "E5", "G5", "B4"],
-    interval: "8n",
-    duration: "0.22",
-  },
-  orbitB: {
-    notes: ["G4", "D5", "F4", "A4"],
-    interval: "4n",
-    duration: "0.3",
-  },
-  orbitC: {
-    notes: ["C3", "G3", "D3", "A2"],
-    interval: "2n",
-    duration: "0.5",
-  },
-};
-
-class OmseEngine {
+/**
+ * Ober MotionSynth Engine (OMSE)
+ * - Core: 3 layered polysynth (ground, harmony, atmos)
+ * - Orbits: 3 satellite voices (A/B/C)
+ * - Meters for: master, core buss, core layers, orbits
+ * - Per-orbit pattern loops
+ */
+class OMSEEngine {
   constructor() {
-    this.started = false;
+    this.initialized = false;
 
-    // ----- MASTER BUS -----
-    this.masterGain = new Tone.Gain(0.8);
+    // Master buss
+    this.masterGain = null;
+    this.masterMeter = null;
 
-    // Use FFT analysers; we'll derive RMS-like levels in code
-    this.masterAnalyser = new Tone.Analyser("fft", 64);
-    this.masterFFT = new Tone.Analyser("fft", 128);
-
-    this.masterGain.connect(this.masterAnalyser);
-    this.masterGain.connect(this.masterFFT);
-    this.masterGain.toDestination();
-
-    // ----- CORE LAYERS -----
+    // Core buss + layers
+    this.coreBuss = null;
+    this.coreMeter = null;
     this.core = {
       layers: {
-        ground: this._makeCoreLayer({
-          octaveOffset: -12, // low foundation
-          volume: -6,
-          attack: 0.02,
-          release: 0.6,
-        }),
-        harmony: this._makeCoreLayer({
-          octaveOffset: 0, // mid body
-          volume: -10,
-          attack: 0.04,
-          release: 0.8,
-        }),
-        atmos: this._makeCoreLayer({
-          octaveOffset: 12, // air / shimmer
-          volume: -16,
-          attack: 0.4,
-          release: 2.5,
-        }),
+        ground: null,
+        harmony: null,
+        atmos: null,
       },
     };
 
-    // ----- ORBITS -----
+    // Orbits
     this.orbits = {
-      orbitA: this._makeOrbitVoice(),
-      orbitB: this._makeOrbitVoice(),
-      orbitC: this._makeOrbitVoice(),
-    };
-
-    // Pattern loops per orbit
-    this.orbitLoops = {
       orbitA: null,
       orbitB: null,
       orbitC: null,
     };
-    this.orbitPatternStep = {
-      orbitA: 0,
-      orbitB: 0,
-      orbitC: 0,
+
+    // Simple per-voice active note maps
+    this.activeNotes = {
+      core: new Set(),
+      orbitA: new Set(),
+      orbitB: new Set(),
+      orbitC: new Set(),
     };
 
-    this.transportStarted = false;
-  }
-
-  // ---------- INTERNAL BUILDERS ----------
-
-  _makeCoreLayer(options) {
-    const gain = new Tone.Gain(0.9).connect(this.masterGain);
-    const analyser = new Tone.Analyser("fft", 32);
-    gain.connect(analyser);
-
-    const synth = new Tone.Synth({
-      oscillator: { type: "triangle" },
-      envelope: {
-        attack: options.attack ?? 0.05,
-        decay: 0.1,
-        sustain: 0.7,
-        release: options.release ?? 0.8,
-      },
-    }).connect(gain);
-
-    synth.volume.value = options.volume ?? -12;
-
-    return {
-      synth,
-      gain,
-      analyser,
-      octaveOffset: options.octaveOffset ?? 0,
-      muted: false,
-      currentGain: 1,
+    // Per-orbit pattern loops
+    this.orbitPatterns = {
+      orbitA: null,
+      orbitB: null,
+      orbitC: null,
     };
   }
 
-  _makeOrbitVoice() {
-    const gain = new Tone.Gain(0.7).connect(this.masterGain);
-    const analyser = new Tone.Analyser("fft", 32);
-    gain.connect(analyser);
-
-    const synth = new Tone.Synth({
-      oscillator: { type: "sawtooth" },
-      envelope: {
-        attack: 0.01,
-        decay: 0.15,
-        sustain: 0.5,
-        release: 0.4,
-      },
-    }).connect(gain);
-
-    synth.volume.value = -14;
-
-    return {
-      synth,
-      gain,
-      analyser,
-      muted: false,
-      currentGain: 1,
-    };
-  }
-
-  _ensureTransport() {
-    if (!this.transportStarted) {
-      Tone.Transport.start();
-      this.transportStarted = true;
-    }
-  }
-
-  // ---------- LIFECYCLE ----------
+  // ---------- PUBLIC API ----------
 
   async startAudioContext() {
-    if (this.started) return;
+    if (this.initialized) return;
+
     await Tone.start();
-    console.log("Tone.js", Tone.version);
-    this.started = true;
-    console.log("OMSE audio context started.");
+    this._buildGraph();
+
+    Tone.Transport.bpm.value = 90;
+    Tone.Transport.start();
+
+    this.initialized = true;
   }
 
-  // ---------- GAIN / MUTE HELPERS ----------
-
-  _applyLayerGain(layer, value) {
-    layer.currentGain = value;
-    layer.gain.gain.rampTo(layer.muted ? 0 : value, 0.05);
-  }
-
-  setCoreLayerGain(id, value) {
-    const layer = this.core.layers[id];
-    if (!layer) return;
-    this._applyLayerGain(layer, value);
-  }
-
-  setCoreLayerMute(id, muted) {
-    const layer = this.core.layers[id];
-    if (!layer) return;
-    layer.muted = muted;
-    this._applyLayerGain(layer, layer.currentGain);
-  }
-
-  setOrbitGain(id, value) {
-    const voice = this.orbits[id];
-    if (!voice) return;
-    voice.currentGain = value;
-    voice.gain.gain.rampTo(voice.muted ? 0 : value, 0.05);
-  }
-
-  setOrbitMute(id, muted) {
-    const voice = this.orbits[id];
-    if (!voice) return;
-    voice.muted = muted;
-    voice.gain.gain.rampTo(muted ? 0 : voice.currentGain, 0.05);
-  }
-
-  // ---------- NOTE HANDLING ----------
-
-  noteOn(voiceId, note) {
-    if (!this.started) return;
-
-    const now = Tone.now();
+  /**
+   * Core / Orbit note control
+   */
+  noteOn(voiceId, note, velocity = 0.9) {
+    if (!this.initialized) return;
 
     if (voiceId === "core") {
-      // Trigger all three Core layers with octave offsets
+      // fan out to all three layers
       Object.values(this.core.layers).forEach((layer) => {
-        const freq = Tone.Frequency(note).transpose(layer.octaveOffset);
-        layer.synth.triggerAttack(freq, now);
+        if (!layer) return;
+        layer.synth.triggerAttack(note, undefined, velocity);
       });
+      this.activeNotes.core.add(note);
       return;
     }
 
     const orbit = this.orbits[voiceId];
-    if (orbit) {
-      orbit.synth.triggerAttack(note, now);
+    if (!orbit) return;
+
+    if (!this.activeNotes[voiceId].has(note)) {
+      orbit.synth.triggerAttack(note, undefined, velocity);
+      this.activeNotes[voiceId].add(note);
     }
   }
 
   noteOff(voiceId, note) {
-    if (!this.started) return;
-
-    const now = Tone.now();
+    if (!this.initialized) return;
 
     if (voiceId === "core") {
+      if (!this.activeNotes.core.has(note)) return;
       Object.values(this.core.layers).forEach((layer) => {
-        layer.synth.triggerRelease(now);
+        if (!layer) return;
+        layer.synth.triggerRelease(note);
       });
+      this.activeNotes.core.delete(note);
       return;
     }
 
     const orbit = this.orbits[voiceId];
-    if (orbit) {
-      orbit.synth.triggerRelease(now);
-    }
+    if (!orbit) return;
+    if (!this.activeNotes[voiceId].has(note)) return;
+
+    orbit.synth.triggerRelease(note);
+    this.activeNotes[voiceId].delete(note);
   }
 
-  // ---------- TEST SCENE ----------
-
+  /**
+   * Test scene: simple chord swell + enabling orbit patterns
+   */
   async playTestScene() {
-    if (!this.started) return;
+    if (!this.initialized) return;
 
     const now = Tone.now();
-    const chord = ["C4", "G4", "A4", "E4"];
+    const chord = ["C4", "E4", "G4", "B4", "C5"];
 
-    chord.forEach((n, index) => {
-      const t = now + index * 0.75;
-
-      // Core chord swell
+    chord.forEach((note, i) => {
+      const t = now + i * 0.35;
       Object.values(this.core.layers).forEach((layer) => {
-        const freq = Tone.Frequency(n).transpose(layer.octaveOffset);
-        layer.synth.triggerAttackRelease(freq, "0.7", t);
+        if (!layer) return;
+        layer.synth.triggerAttackRelease(note, "2n", t);
       });
-
-      // Orbit A accent
-      this.orbits.orbitA.synth.triggerAttackRelease(n, "0.3", t + 0.1);
     });
 
-    return new Promise((resolve) => setTimeout(resolve, 4000));
+    // Let all orbits run their current patterns for the demo
+    this.startOrbitPattern("orbitA");
+    this.startOrbitPattern("orbitB");
+    this.startOrbitPattern("orbitC");
   }
 
-  // ---------- ORBIT PATTERNS (A, B, C) ----------
+  // ----- Core layer controls -----
 
-  setOrbitPattern(orbitId, enabled) {
-    if (!this.started) return;
-    if (!this.orbits[orbitId]) return;
+  setCoreLayerGain(layerId, normalized) {
+    const layer = this.core.layers[layerId];
+    if (!layer) return;
+    const v = Math.max(0, Math.min(1, normalized));
+    layer.baseGain = v;
+    layer.gain.gain.value = layer.muted ? 0 : v;
+  }
 
-    const currentLoop = this.orbitLoops[orbitId];
+  setCoreLayerMute(layerId, muted) {
+    const layer = this.core.layers[layerId];
+    if (!layer) return;
+    layer.muted = !!muted;
+    layer.gain.gain.value = layer.muted ? 0 : layer.baseGain;
+  }
 
-    if (enabled) {
-      if (currentLoop) return; // already running
+  // ----- Orbit controls -----
 
-      const config = ORBIT_PATTERN_CONFIG[orbitId];
-      if (!config) return;
+  setOrbitGain(orbitId, normalized) {
+    const orbit = this.orbits[orbitId];
+    if (!orbit) return;
+    const v = Math.max(0, Math.min(1, normalized));
+    orbit.baseGain = v;
+    orbit.gain.gain.value = orbit.muted ? 0 : v;
+  }
 
-      const { notes, interval, duration } = config;
-      let step = this.orbitPatternStep[orbitId] ?? 0;
+  setOrbitMute(orbitId, muted) {
+    const orbit = this.orbits[orbitId];
+    if (!orbit) return;
+    orbit.muted = !!muted;
+    orbit.gain.gain.value = orbit.muted ? 0 : orbit.baseGain;
+  }
 
-      const loop = new Tone.Loop((time) => {
-        const note = notes[step % notes.length];
-        this.orbits[orbitId].synth.triggerAttackRelease(note, duration, time);
-        step += 1;
-        this.orbitPatternStep[orbitId] = step;
-      }, interval).start(0);
+  startOrbitPattern(orbitId) {
+    if (!this.initialized) return;
+    const loop = this.orbitPatterns[orbitId];
+    if (!loop) return;
+    if (!loop.state || loop.state === "stopped") {
+      loop.start(0);
+    }
+  }
 
-      this.orbitLoops[orbitId] = loop;
-      this._ensureTransport();
+  stopOrbitPattern(orbitId) {
+    const loop = this.orbitPatterns[orbitId];
+    if (!loop) return;
+    if (loop.state === "started") {
+      loop.stop();
+    }
+  }
+
+  /**
+   * Toggle an orbit's pattern on/off (used by UI + preset sync)
+   */
+  setOrbitPatternState(orbitId, isOn) {
+    if (!this.initialized) return;
+
+    const loop = this.orbitPatterns[orbitId];
+    if (!loop) return;
+
+    const shouldStart = !!isOn;
+
+    if (shouldStart) {
+      if (loop.state !== "started") {
+        loop.start(0);
+      }
     } else {
-      if (!currentLoop) return;
-      currentLoop.stop();
-      currentLoop.dispose();
-      this.orbitLoops[orbitId] = null;
+      if (loop.state === "started") {
+        loop.stop();
+      }
     }
   }
 
-  // ---------- METER HELPERS ----------
-
-  _rmsishFromAnalyser(analyser) {
-    // FFT data in dB; convert to 0–1 "energy" for meters
-    const values = analyser.getValue();
-    if (!values.length) return 0;
-
-    let sum = 0;
-    for (let i = 0; i < values.length; i++) {
-      const v = values[i];
-      if (!Number.isFinite(v)) continue;
-      // Clamp -90 dB to 0 dB, normalize to 0..1
-      const clamped = Math.max(-90, Math.min(0, v));
-      const norm = (clamped + 90) / 90; // 0 at -90, 1 at 0
-      sum += norm * norm; // square for energy
-    }
-    const mean = sum / values.length;
-    return Math.sqrt(mean); // back to linear-ish 0..1
-  }
-
-  getCoreLayerLevel(id) {
-    const layer = this.core.layers[id];
-    if (!layer) return 0;
-    return this._rmsishFromAnalyser(layer.analyser);
-  }
-
-  getOrbitLevel(id) {
-    const voice = this.orbits[id];
-    if (!voice) return 0;
-    return this._rmsishFromAnalyser(voice.analyser);
-  }
+  // ----- Meter getters (0–1) -----
 
   getMasterLevel() {
-    return this._rmsishFromAnalyser(this.masterAnalyser);
+    if (!this.masterMeter) return 0;
+    const v = this.masterMeter.getValue(); // already 0–1
+    return this._clamp01(v);
   }
 
-  // ---------- SPECTRUM FOR MASTER OUTPUT ----------
+  getCoreLayerLevel(layerId) {
+    const layer = this.core.layers[layerId];
+    if (!layer || !layer.meter) return 0;
+    const v = layer.meter.getValue();
+    return this._clamp01(v);
+  }
 
-  getMasterSpectrum() {
-    if (!this.masterFFT) return [];
-    const values = this.masterFFT.getValue(); // Float32Array of dB
+  getOrbitLevel(orbitId) {
+    const orbit = this.orbits[orbitId];
+    if (!orbit || !orbit.meter) return 0;
+    const v = orbit.meter.getValue();
+    return this._clamp01(v);
+  }
 
-    const arr = [];
-    for (let i = 0; i < values.length; i++) {
-      const v = values[i];
-      if (!Number.isFinite(v)) {
-        arr.push(0);
-        continue;
-      }
-      const clamped = Math.max(-90, Math.min(0, v));
-      const norm = (clamped + 90) / 90; // 0 at -90, 1 at 0
-      arr.push(norm);
+  // ---------- INTERNAL ----------
+
+  _clamp01(v) {
+    if (Number.isNaN(v)) return 0;
+    if (v < 0) return 0;
+    if (v > 1) return 1;
+    return v;
+  }
+
+  _buildGraph() {
+    // MASTER BUS
+    this.masterGain = new Tone.Gain(0.9).toDestination();
+    this.masterMeter = makeMeter();
+    this.masterGain.connect(this.masterMeter);
+
+    // CORE BUSS
+    this.coreBuss = new Tone.Gain(1).connect(this.masterGain);
+    this.coreMeter = makeMeter();
+    this.coreBuss.connect(this.coreMeter);
+
+    // CORE LAYERS
+    this.core.layers.ground = this._buildCoreLayer({
+      type: "sine",
+      spread: 0,
+      detune: -1200, // -12 semitones
+      baseGain: 0.9,
+    });
+
+    this.core.layers.harmony = this._buildCoreLayer({
+      type: "sawtooth",
+      spread: 10,
+      detune: 0,
+      baseGain: 0.8,
+    });
+
+    this.core.layers.atmos = this._buildCoreLayer({
+      type: "triangle",
+      spread: 20,
+      detune: 12, // gentle shimmer
+      baseGain: 0.7,
+      airy: true,
+    });
+
+    // ORBITS
+    this.orbits.orbitA = this._buildOrbitVoice({
+      type: "square",
+      pan: -0.25,
+      baseGain: 0.7,
+    });
+
+    this.orbits.orbitB = this._buildOrbitVoice({
+      type: "sawtooth",
+      pan: 0.25,
+      baseGain: 0.7,
+    });
+
+    this.orbits.orbitC = this._buildOrbitVoice({
+      type: "triangle",
+      pan: 0,
+      baseGain: 0.65,
+    });
+
+    // ORBIT PATTERNS (placeholder musical behavior)
+    this.orbitPatterns.orbitA = this._makeOrbitPattern("orbitA", "8n", [
+      "C4",
+      "E4",
+      "G4",
+      "B4",
+    ]);
+
+    this.orbitPatterns.orbitB = this._makeOrbitPattern("orbitB", "4n", [
+      "C3",
+      "G3",
+      "D4",
+    ]);
+
+    this.orbitPatterns.orbitC = this._makeOrbitPattern("orbitC", "2n", [
+      "C4",
+      "G3",
+    ]);
+  }
+
+  _buildCoreLayer({ type, spread, detune, baseGain, airy = false }) {
+    const synth = new Tone.PolySynth(Tone.Synth, {
+      oscillator: { type, spread, detune },
+      envelope: {
+        attack: 0.02,
+        decay: 0.4,
+        sustain: 0.7,
+        release: 1.8,
+      },
+    });
+
+    // optional airy noise for atmos
+    let outputNode = synth;
+    if (airy) {
+      const noise = new Tone.Noise("pink").start();
+      const noiseFilter = new Tone.Filter(6000, "lowpass");
+      const noiseGain = new Tone.Gain(0.15);
+      noise.connect(noiseFilter);
+      noiseFilter.connect(noiseGain);
+
+      const merge = new Tone.Gain(1);
+      synth.connect(merge);
+      noiseGain.connect(merge);
+      outputNode = merge;
     }
-    return arr;
+
+    const gain = new Tone.Gain(baseGain).connect(this.coreBuss);
+    const meter = makeMeter();
+    gain.connect(meter);
+    outputNode.connect(gain);
+
+    return {
+      synth,
+      gain,
+      meter,
+      muted: false,
+      baseGain,
+    };
+  }
+
+  _buildOrbitVoice({ type, pan, baseGain }) {
+    const synth = new Tone.PolySynth(Tone.Synth, {
+      oscillator: { type },
+      envelope: {
+        attack: 0.01,
+        decay: 0.25,
+        sustain: 0.5,
+        release: 0.6,
+      },
+    });
+
+    const panner = new Tone.Panner(pan || 0);
+    const gain = new Tone.Gain(baseGain).connect(this.masterGain);
+    const meter = makeMeter();
+    gain.connect(meter);
+
+    synth.connect(panner);
+    panner.connect(gain);
+
+    return {
+      synth,
+      panner,
+      gain,
+      meter,
+      muted: false,
+      baseGain,
+    };
+  }
+
+  _makeOrbitPattern(orbitId, interval, notes) {
+    const orbit = this.orbits[orbitId];
+    if (!orbit) return null;
+
+    const loop = new Tone.Loop((time) => {
+      if (orbit.muted || orbit.gain.gain.value <= 0.0001) return;
+      const idx = Math.floor(Math.random() * notes.length);
+      const note = notes[idx];
+      orbit.synth.triggerAttackRelease(note, "8n", time);
+    }, interval);
+
+    // We don't start it here; UI controls do that.
+    return loop;
   }
 }
 
-export const omseEngine = new OmseEngine();
+export const omseEngine = new OMSEEngine();

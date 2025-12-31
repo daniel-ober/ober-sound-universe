@@ -1,58 +1,140 @@
-/* src/components/TopBar.css */
+/* existing capsule styles (unchanged) */
 
-.top-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 24px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.4);
-  background: linear-gradient(to right, #020617aa, #020617dd);
-  backdrop-filter: blur(16px);
+.topbar-shell {
+  width: 100%;
+  max-width: 1180px;
+  padding: 0 18px;
+  box-sizing: border-box;
+  margin: 0 auto 10px;
 }
 
-.brand {
+.topbar-inner {
+  border-radius: 999px;
+  padding: 11px 22px;
+  background:
+    radial-gradient(circle at 0 0, rgba(151, 199, 255, 0.22), transparent 60%),
+    radial-gradient(circle at 100% 0, rgba(255, 190, 163, 0.16), transparent 58%),
+    linear-gradient(135deg, rgba(9, 12, 26, 0.98), rgba(5, 7, 20, 0.98));
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.95);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+/* left: brand + galaxy */
+
+.topbar-left {
   display: flex;
   flex-direction: column;
+  gap: 2px;
 }
 
-.brand-main {
+.topbar-product {
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(171, 187, 220, 0.92);
+}
+
+.topbar-galaxy {
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(238, 244, 255, 0.98);
+}
+
+/* center: keyboard helper */
+
+.topbar-center {
+  font-size: 11px;
+  color: rgba(178, 196, 230, 0.9);
+}
+
+/* right: buttons + meters */
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* generic pill buttons */
+
+.topbar-btn {
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(16, 20, 38, 0.98);
+  color: rgba(211, 222, 246, 0.98);
+  cursor: pointer;
+  transition: background var(--transition-fast), box-shadow var(--transition-fast),
+    transform var(--transition-fast), border-color var(--transition-fast);
+}
+
+.topbar-btn:hover {
+  background: rgba(26, 34, 64, 0.98);
+  box-shadow: 0 0 12px rgba(152, 196, 255, 0.7);
+  border-color: rgba(255, 255, 255, 0.08);
+  transform: translateY(-0.5px);
+}
+
+.topbar-btn.primary {
+  background: linear-gradient(135deg, #ffffff, #c2e5ff);
+  color: #131428;
   font-weight: 600;
-  letter-spacing: 0.06em;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.7),
+    0 0 22px rgba(155, 220, 255, 0.9);
+}
+
+.topbar-btn.primary:hover {
+  background: linear-gradient(135deg, #ffffff, #e0f2ff);
+}
+
+.topbar-btn.disabled {
+  opacity: 0.55;
+  cursor: default;
+  box-shadow: none;
+}
+
+/* output meters cluster */
+
+.topbar-output {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.topbar-output-label {
+  font-size: 10px;
   text-transform: uppercase;
-  font-size: 13px;
-  color: #bfdbfe;
+  letter-spacing: 0.16em;
+  color: rgba(171, 187, 220, 0.85);
 }
 
-.brand-sub {
-  font-size: 12px;
-  color: #9ca3af;
-  margin-top: 2px;
+.topbar-output-spectrum {
+  width: 120px;
 }
 
-.top-controls {
-  display: flex;
-  align-items: center;
-  gap: 16px;
+.topbar-output-meter {
+  width: 80px;
 }
 
-.top-controls-left {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
+@media (max-width: 780px) {
+  .topbar-inner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
 
-.top-controls-right {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  min-width: 260px;
+  .topbar-right {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
 }
-
-.top-output-label {
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: rgba(148, 163, 184, 0.9);
-}
-
-/* Buttons + .hint use existing App.css styles (primary-btn, secondary-btn, hint) */

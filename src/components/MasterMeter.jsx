@@ -14,30 +14,24 @@ export function MasterMeter({ audioReady }) {
 
     let frameId;
 
-    const update = () => {
-      const val = omseEngine.getMasterLevel(); // 0–1
-      setLevel(val);
-      frameId = requestAnimationFrame(update);
+    const loop = () => {
+      const v = omseEngine.getMasterLevel(); // 0–1
+      setLevel(v);
+      frameId = requestAnimationFrame(loop);
     };
 
-    frameId = requestAnimationFrame(update);
-
+    loop();
     return () => {
       if (frameId) cancelAnimationFrame(frameId);
     };
   }, [audioReady]);
 
-  const widthPercent = Math.round(level * 100);
-
   return (
     <div className="master-meter">
-      <span className="master-meter-label">Output</span>
-      <div className="master-meter-bar">
-        <div
-          className="master-meter-bar-inner"
-          style={{ width: `${widthPercent}%` }}
-        />
-      </div>
+      <div
+        className="master-meter-fill"
+        style={{ transform: `scaleX(${level})` }}
+      />
     </div>
   );
 }

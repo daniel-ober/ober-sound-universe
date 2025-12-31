@@ -14,26 +14,23 @@ export function CoreLayerMeter({ layerId, audioReady }) {
 
     let frameId;
 
-    const update = () => {
-      const val = omseEngine.getCoreLayerLevel(layerId); // 0–1
-      setLevel(val);
-      frameId = requestAnimationFrame(update);
+    const loop = () => {
+      const v = omseEngine.getCoreLayerLevel(layerId); // 0–1
+      setLevel(v);
+      frameId = requestAnimationFrame(loop);
     };
 
-    frameId = requestAnimationFrame(update);
-
+    loop();
     return () => {
       if (frameId) cancelAnimationFrame(frameId);
     };
-  }, [layerId, audioReady]);
-
-  const widthPercent = Math.round(level * 100);
+  }, [audioReady, layerId]);
 
   return (
     <div className="core-layer-meter">
       <div
-        className="core-layer-meter-inner"
-        style={{ width: `${widthPercent}%` }}
+        className="core-layer-meter-fill"
+        style={{ transform: `scaleX(${level})` }}
       />
     </div>
   );

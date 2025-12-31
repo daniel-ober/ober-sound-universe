@@ -5,7 +5,6 @@ import { CoreMixer } from "./components/CoreMixer";
 import { VoiceCard } from "./components/VoiceCard";
 import { TopBar } from "./components/TopBar";
 import { GalaxyPresetBar } from "./components/GalaxyPresetBar";
-import { MASTER_PRESETS } from "./presets/masterPresets";
 import "./App.css";
 
 const KEY_TO_NOTE = {
@@ -19,22 +18,60 @@ const KEY_TO_NOTE = {
   k: "C5",
 };
 
+// Simple dev presets for Galaxy0
+const GALAXY0_PRESETS = {
+  presetA: {
+    core: {
+      ground: { gain: 90, muted: false },
+      harmony: { gain: 65, muted: false },
+      atmos: { gain: 55, muted: false },
+    },
+    orbits: {
+      orbitA: { gain: 70, muted: false },
+      orbitB: { gain: 60, muted: false },
+      orbitC: { gain: 45, muted: false },
+    },
+    orbitPatterns: {
+      orbitA: true,
+      orbitB: false,
+      orbitC: true,
+    },
+  },
+  presetB: {
+    core: {
+      ground: { gain: 55, muted: false },
+      harmony: { gain: 80, muted: false },
+      atmos: { gain: 75, muted: false },
+    },
+    orbits: {
+      orbitA: { gain: 50, muted: false },
+      orbitB: { gain: 70, muted: false },
+      orbitC: { gain: 65, muted: false },
+    },
+    orbitPatterns: {
+      orbitA: true,
+      orbitB: true,
+      orbitC: false,
+    },
+  },
+};
+
 function App() {
   const [audioReady, setAudioReady] = useState(false);
   const [isPlayingDemo, setIsPlayingDemo] = useState(false);
 
   const [activePreset, setActivePreset] = useState("presetA");
-  const [coreLayers, setCoreLayers] = useState(MASTER_PRESETS.presetA.core);
-  const [orbitLayers, setOrbitLayers] = useState(MASTER_PRESETS.presetA.orbits);
+  const [coreLayers, setCoreLayers] = useState(GALAXY0_PRESETS.presetA.core);
+  const [orbitLayers, setOrbitLayers] = useState(
+    GALAXY0_PRESETS.presetA.orbits
+  );
   const [orbitPatterns, setOrbitPatterns] = useState(
-    MASTER_PRESETS.presetA.patterns || {
-      orbitA: false,
-      orbitB: false,
-      orbitC: false,
-    }
+    GALAXY0_PRESETS.presetA.orbitPatterns
   );
 
-  // ----- Keyboard → Core voice -----
+  // -------------------------------
+  // Keyboard → Core voice
+  // -------------------------------
   useEffect(() => {
     const downKeys = new Set();
 
@@ -67,7 +104,9 @@ function App() {
     };
   }, [audioReady]);
 
-  // ----- Sync UI state → engine -----
+  // -------------------------------
+  // Sync UI state → engine
+  // -------------------------------
   const syncToEngine = (coreState, orbitState, patternState) => {
     if (!audioReady) return;
 
@@ -84,28 +123,26 @@ function App() {
     });
 
     // Orbit patterns
-    if (patternState) {
-      Object.entries(patternState).forEach(([orbitId, enabled]) => {
-        omseEngine.setOrbitPattern(orbitId, !!enabled);
-      });
-    }
+    Object.entries(patternState).forEach(([orbitId, isOn]) => {
+      if (isOn) {
+        omseEngine.startOrbitPattern(orbitId);
+      } else {
+        omseEngine.stopOrbitPattern(orbitId);
+      }
+    });
   };
 
-  // ----- Audio init -----
+  // -------------------------------
+  // Top-level controls
+  // -------------------------------
   const handleInitAudio = async () => {
     await omseEngine.startAudioContext();
     setAudioReady(true);
 
-    const preset = MASTER_PRESETS[activePreset];
-    if (!preset) return;
-
-    syncToEngine(preset.core, preset.orbits, preset.patterns);
-    setOrbitPatterns(
-      preset.patterns || { orbitA: false, orbitB: false, orbitC: false }
-    );
+    const preset = GALAXY0_PRESETS[activePreset];
+    syncToEngine(preset.core, preset.orbits, preset.orbitPatterns);
   };
 
-  // ----- Test scene -----
   const handlePlayTestScene = async () => {
     if (!audioReady) return;
     setIsPlayingDemo(true);
@@ -113,22 +150,20 @@ function App() {
     setTimeout(() => setIsPlayingDemo(false), 9000);
   };
 
-  // ----- Preset handling -----
   const handleApplyPreset = (presetId) => {
-    const preset = MASTER_PRESETS[presetId];
+    const preset = GALAXY0_PRESETS[presetId];
     if (!preset) return;
 
     setActivePreset(presetId);
     setCoreLayers(preset.core);
     setOrbitLayers(preset.orbits);
-    const nextPatterns =
-      preset.patterns || { orbitA: false, orbitB: false, orbitC: false };
-    setOrbitPatterns(nextPatterns);
-
-    syncToEngine(preset.core, preset.orbits, nextPatterns);
+    setOrbitPatterns(preset.orbitPatterns);
+    syncToEngine(preset.core, preset.orbits, preset.orbitPatterns);
   };
 
-  // ----- Core mixer handlers -----
+  // -------------------------------
+  // Core mixer handlers
+  // -------------------------------
   const handleLayerGainChange = (layerId, newPercent) => {
     setCoreLayers((prev) => {
       const next = {
@@ -152,7 +187,9 @@ function App() {
     });
   };
 
-  // ----- Orbit mixer handlers -----
+  // -------------------------------
+  // Orbit mixer handlers
+  // -------------------------------
   const handleOrbitGainChange = (orbitId, newPercent) => {
     setOrbitLayers((prev) => {
       const next = {
@@ -180,89 +217,139 @@ function App() {
     if (!audioReady) return;
 
     setOrbitPatterns((prev) => {
-      const next = {
-        ...prev,
-        [orbitId]: !prev[orbitId],
-      };
+      const next = { ...prev, [orbitId]: !prev[orbitId] };
       syncToEngine(coreLayers, orbitLayers, next);
       return next;
     });
   };
 
-  // ----- Render -----
+  // -------------------------------
+  // Render
+  // -------------------------------
   return (
     <div className="app-root">
-      <TopBar
-        audioReady={audioReady}
-        isPlayingDemo={isPlayingDemo}
-        onInitAudio={handleInitAudio}
-        onPlayTestScene={handlePlayTestScene}
-      />
+      <div className="instrument-frame skin-image">
+        <div className="instrument-inner">
+          <div className="instrument-grid">
+            {/* TOP: brand / transport / preset bars */}
+            <div className="instrument-row-top">
+              <TopBar
+                audioReady={audioReady}
+                isPlayingDemo={isPlayingDemo}
+                onInitAudio={handleInitAudio}
+                onPlayTestScene={handlePlayTestScene}
+              />
 
-      <GalaxyPresetBar
-        activePreset={activePreset}
-        onSelectPreset={handleApplyPreset}
-      />
+              <GalaxyPresetBar
+                activePreset={activePreset}
+                onSelectPreset={handleApplyPreset}
+              />
+            </div>
 
-      <main className="universe">
-        <section className="core-panel">
-          <h2>Core</h2>
-          <p className="desc">
-            The emotional heart of the current Galaxy. Core is a three-layer
-            instrument: Ground, Harmony, and Atmosphere.
-          </p>
-          <p className="status">
-            Audio status:{" "}
-            <strong>{audioReady ? "Ready" : "Not initialized"}</strong>
-          </p>
+            {/* GRAVITY SPECTRUM STRIP */}
+            <section className="instrument-row-spectrum">
+              <section className="gravity-spectrum-shell">
+                <div className="gravity-spectrum-inner">
+                  <div className="gravity-spectrum-header">
+                    <span>Galaxy 0 · Output</span>
+                  </div>
+                  <div className="gravity-spectrum-rail" />
+                  <div className="gravity-spectrum-tag">Gravity Spectrum</div>
+                </div>
+              </section>
+            </section>
 
-          <CoreMixer
-            audioReady={audioReady}
-            coreLayers={coreLayers}
-            onLayerGainChange={handleLayerGainChange}
-            onLayerMuteToggle={handleLayerMuteToggle}
-          />
-        </section>
+            {/* MAIN: Core (left) + Orbits (right) */}
+            <section className="instrument-row-main">
+              <main className="universe">
+                <div className="universe-layout">
+                  {/* LEFT: Core / Gravity */}
+                  <section className="core-panel">
+                    <h2 className="section-title">CORE</h2>
+                    <p className="section-subtitle">
+                      The emotional heart of the current Galaxy. Core is a
+                      three-layer instrument: Ground, Harmony, and Atmosphere.
+                    </p>
 
-        <section className="orbits-grid">
-          <VoiceCard
-            id="orbitA"
-            name="Orbit A"
-            description="First orbiting voice."
-            audioReady={audioReady}
-            layerState={orbitLayers.orbitA}
-            onGainChange={handleOrbitGainChange}
-            onToggleMute={handleOrbitMuteToggle}
-            supportsPattern
-            patternActive={orbitPatterns.orbitA}
-            onTogglePattern={handleOrbitPatternToggle}
-          />
-          <VoiceCard
-            id="orbitB"
-            name="Orbit B"
-            description="Second orbiting voice."
-            audioReady={audioReady}
-            layerState={orbitLayers.orbitB}
-            onGainChange={handleOrbitGainChange}
-            onToggleMute={handleOrbitMuteToggle}
-            supportsPattern
-            patternActive={orbitPatterns.orbitB}
-            onTogglePattern={handleOrbitPatternToggle}
-          />
-          <VoiceCard
-            id="orbitC"
-            name="Orbit C"
-            description="Third orbiting voice."
-            audioReady={audioReady}
-            layerState={orbitLayers.orbitC}
-            onGainChange={handleOrbitGainChange}
-            onToggleMute={handleOrbitMuteToggle}
-            supportsPattern
-            patternActive={orbitPatterns.orbitC}
-            onTogglePattern={handleOrbitPatternToggle}
-          />
-        </section>
-      </main>
+                    <p className="status-line">
+                      <span className="status-label">Audio status:</span>{" "}
+                      <span className={audioReady ? "status-ok" : "status-bad"}>
+                        {audioReady ? "READY" : "NOT INITIALIZED"}
+                      </span>
+                    </p>
+
+                    <div className="core-layers-header">
+                      <span className="eyebrow-label">Core Layers</span>
+                      <p className="core-layers-copy">
+                        Shape the Core engine by balancing low foundation,
+                        harmonic body, and atmospheric air.
+                      </p>
+                    </div>
+
+                    <CoreMixer
+                      audioReady={audioReady}
+                      coreLayers={coreLayers}
+                      onLayerGainChange={handleLayerGainChange}
+                      onLayerMuteToggle={handleLayerMuteToggle}
+                    />
+                  </section>
+
+                  {/* RIGHT: Orbit voices */}
+                  <section className="orbits-column">
+                    <div className="orbits-header">
+                      <span className="eyebrow-label">Orbit Voices</span>
+                    </div>
+
+                    <div className="orbits-stack">
+                      <VoiceCard
+                        id="orbitA"
+                        name="Orbit A"
+                        description="First orbiting voice."
+                        audioReady={audioReady}
+                        layerState={orbitLayers.orbitA}
+                        onGainChange={handleOrbitGainChange}
+                        onToggleMute={handleOrbitMuteToggle}
+                        supportsPattern
+                        patternActive={orbitPatterns.orbitA}
+                        onTogglePattern={handleOrbitPatternToggle}
+                      />
+                      <VoiceCard
+                        id="orbitB"
+                        name="Orbit B"
+                        description="Second orbiting voice."
+                        audioReady={audioReady}
+                        layerState={orbitLayers.orbitB}
+                        onGainChange={handleOrbitGainChange}
+                        onToggleMute={handleOrbitMuteToggle}
+                        supportsPattern
+                        patternActive={orbitPatterns.orbitB}
+                        onTogglePattern={handleOrbitPatternToggle}
+                      />
+                      <VoiceCard
+                        id="orbitC"
+                        name="Orbit C"
+                        description="Third orbiting voice."
+                        audioReady={audioReady}
+                        layerState={orbitLayers.orbitC}
+                        onGainChange={handleOrbitGainChange}
+                        onToggleMute={handleOrbitMuteToggle}
+                        supportsPattern
+                        patternActive={orbitPatterns.orbitC}
+                        onTogglePattern={handleOrbitPatternToggle}
+                      />
+                    </div>
+                  </section>
+                </div>
+              </main>
+            </section>
+
+            {/* BOTTOM: future mixer / transport row */}
+            <section className="instrument-row-bottom">
+              {/* TODO: tempo, faders, macro knobs, etc. */}
+            </section>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

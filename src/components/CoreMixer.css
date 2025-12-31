@@ -1,88 +1,133 @@
-/* src/components/CoreMixer.css */
+/* Core (Gravity) mixer styling */
 
 .core-mixer {
-  margin-top: 20px;
-  padding-top: 12px;
-  border-top: 1px solid rgba(148, 163, 184, 0.4);
+  margin-top: 6px;
 }
 
-.core-mixer h3 {
-  font-size: 14px;
-  margin-bottom: 4px;
-}
-
-.core-mixer-hint {
-  font-size: 11px;
-  color: #9ca3af;
-  margin-bottom: 10px;
-}
+/* individual layer row */
 
 .core-layer-row {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 8px 0;
+  margin-bottom: 18px;
 }
 
-.core-layer-label {
+.core-layer-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
 }
 
 .core-layer-name {
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 11px;
+  color: rgba(227, 236, 255, 0.96);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
 }
 
 .core-layer-percent {
   font-size: 11px;
-  color: #9ca3af;
+  color: rgba(176, 192, 226, 0.9);
 }
 
-.core-layer-controls {
+/* Mute button */
+
+.core-mute-btn {
+  border-radius: 999px;
+  padding: 6px 13px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  border: 1px solid rgba(255, 255, 255, 0.03);
+  background: rgba(18, 22, 40, 0.96);
+  color: rgba(199, 211, 236, 0.95);
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast),
+    box-shadow var(--transition-fast), transform var(--transition-fast);
+}
+
+.core-mute-btn:hover {
+  background: rgba(29, 35, 66, 0.98);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 12px rgba(141, 185, 255, 0.5);
+  transform: translateY(-0.5px);
+}
+
+.core-mute-btn.is-muted {
+  background: linear-gradient(135deg, #3e3522, #2b2216);
+  color: #f6e3b0;
+  border-color: rgba(255, 217, 149, 0.5);
+}
+
+/* Slider base */
+
+.core-slider-track-wrapper {
+  position: relative;
+  width: 100%;
+  height: 22px;
   display: flex;
   align-items: center;
-  gap: 10px;
 }
 
-.core-layer-slider {
-  flex: 1;
-}
+/* underlying track “lane” */
 
-.core-layer-mute-btn {
-  border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.8);
-  padding: 4px 10px;
-  font-size: 11px;
-  background: #020617;
-  color: #e5e7eb;
-  cursor: pointer;
-  transition: background 0.12s ease, border-color 0.12s ease;
-}
-
-.core-layer-mute-btn--active {
-  background: #7f1d1d;
-  border-color: #fecaca;
-}
-
-/* Core layer meters */
-
-.core-layer-meter {
-  margin-top: 4px;
+.core-slider-track {
   width: 100%;
-  height: 6px;
+  height: 3px;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.95);
-  overflow: hidden;
-  position: relative;
+  background: linear-gradient(
+    90deg,
+    rgba(126, 150, 192, 0.25),
+    rgba(56, 83, 120, 0.18)
+  );
 }
 
-.core-layer-meter-inner {
-  height: 100%;
-  width: 0%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, #38bdf8, #6366f1, #a855f7);
-  transition: width 0.08s linear;
-  opacity: 0.9;
+/* let the underlying <input type="range"> sit on top */
+
+.core-slider-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 22px;
+  -webkit-appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+/* track */
+
+.core-slider-input::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.core-slider-input::-moz-range-track {
+  height: 3px;
+  border-radius: 999px;
+  background: transparent;
+}
+
+/* thumb */
+
+.core-slider-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: radial-gradient(circle at 30% 30%, #ffffff, #c3e2ff 40%, #527eff 100%);
+  box-shadow:
+    0 0 0 3px rgba(19, 27, 60, 0.9),
+    0 0 12px rgba(158, 210, 255, 0.9);
+  margin-top: -5.5px;
+}
+
+.core-slider-input::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: none;
+  background: radial-gradient(circle at 30% 30%, #ffffff, #c3e2ff 40%, #527eff 100%);
+  box-shadow:
+    0 0 0 3px rgba(19, 27, 60, 0.9),
+    0 0 12px rgba(158, 210, 255, 0.9);
 }

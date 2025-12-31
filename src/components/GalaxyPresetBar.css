@@ -1,59 +1,118 @@
-/* src/components/GalaxyPresetBar.css */
+/* Galaxy preset strip – lives under the top bar */
 
-.galaxy-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 24px 12px;
-  border-bottom: 1px solid rgba(31, 41, 55, 0.9);
-  background: radial-gradient(circle at top, #020617, #020617f0);
+.galaxy-preset-shell {
+  width: 100%;
+  max-width: 1180px;
+  margin: 10px auto 4px;
+  padding: 0 18px;
+  box-sizing: border-box;
 }
 
-.galaxy-bar-left {
+.galaxy-preset-inner {
+  border-radius: 999px;
+  padding: 7px 18px;
+  background:
+    radial-gradient(circle at 0 0, rgba(151, 199, 255, 0.18), transparent 55%),
+    radial-gradient(circle at 100% 0, rgba(255, 190, 163, 0.16), transparent 55%),
+    linear-gradient(135deg, rgba(8, 12, 26, 0.98), rgba(5, 8, 20, 0.98));
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.95);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+/* left: label */
+
+.galaxy-preset-left {
   display: flex;
   flex-direction: column;
+  gap: 2px;
 }
 
-.galaxy-bar-title {
-  font-size: 12px;
-  letter-spacing: 0.14em;
+.galaxy-preset-label {
+  font-size: 10px;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: rgba(191, 219, 254, 0.9);
+  color: rgba(171, 187, 220, 0.85);
 }
 
-.galaxy-bar-subtitle {
+.galaxy-preset-name {
   font-size: 11px;
-  color: rgba(148, 163, 184, 0.9);
-  margin-top: 2px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(237, 244, 255, 0.98);
 }
 
-.galaxy-bar-presets {
+/* center: preset chips */
+
+.galaxy-preset-center {
+  flex: 1;
   display: flex;
-  gap: 0.5rem;
+  justify-content: center;
 }
 
-.galaxy-preset-pill {
+.galaxy-preset-chip-row {
+  display: inline-flex;
+  gap: 8px;
+  padding: 4px 8px;
   border-radius: 999px;
-  border: 1px solid rgba(55, 65, 81, 0.9);
-  background: rgba(15, 23, 42, 0.9);
-  color: #e5e7eb;
-  font-size: 11px;
-  padding: 6px 14px;
+  background: rgba(8, 11, 24, 0.9);
+}
+
+/* individual chips (Preset A / Preset B etc) */
+
+.galaxy-preset-chip {
+  border-radius: 999px;
+  padding: 5px 14px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  background: rgba(16, 20, 38, 0.98);
+  color: rgba(188, 204, 238, 0.92);
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease,
-    box-shadow 0.15s ease, transform 0.08s ease;
-  white-space: nowrap;
+  transition: background var(--transition-fast), color var(--transition-fast),
+    border-color var(--transition-fast), box-shadow var(--transition-fast),
+    transform var(--transition-fast);
 }
 
-.galaxy-preset-pill:hover {
-  background: rgba(17, 24, 39, 0.95);
-  border-color: rgba(96, 165, 250, 0.9);
-}
-
-.galaxy-preset-pill--active {
-  background: linear-gradient(to right, #0ea5e9, #6366f1);
-  border-color: transparent;
-  color: white;
-  box-shadow: 0 0 18px rgba(56, 189, 248, 0.4);
+.galaxy-preset-chip:hover {
+  background: rgba(27, 33, 64, 0.98);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 12px rgba(145, 191, 255, 0.6);
   transform: translateY(-0.5px);
+}
+
+/* active preset = gold chip */
+
+.galaxy-preset-chip.active {
+  background: linear-gradient(135deg, #f5e29c, #f5c968);
+  color: #18121f;
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.65),
+    0 0 18px rgba(255, 214, 140, 0.85);
+}
+
+/* right: small output text */
+
+.galaxy-preset-right {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: rgba(171, 187, 220, 0.85);
+}
+
+@media (max-width: 780px) {
+  .galaxy-preset-inner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .galaxy-preset-center {
+    justify-content: flex-start;
+  }
 }

@@ -10,23 +10,34 @@ export function TopBar({
   onPlayTestScene,
 }) {
   return (
-    <header className="top-bar">
-      <div className="brand">
-        <span className="brand-main">Ober Instruments</span>
-        <span className="brand-sub">
-          Ober Sound Universe · Galaxy0 (dev)
-        </span>
-      </div>
+    <div className="topbar-shell">
+      <header className="topbar-inner">
+        <div className="topbar-left">
+          <span className="topbar-product">Ober Instruments</span>
+          <span className="topbar-galaxy">
+            Ober Sound Universe · Galaxy0 (dev)
+          </span>
+        </div>
 
-      <div className="top-controls">
-        <div className="top-controls-left">
+        <div className="topbar-center">
+          Play Core with your keyboard: A–K (C4 → C5)
+        </div>
+
+        <div className="topbar-right">
           {!audioReady ? (
-            <button className="primary-btn" onClick={onInitAudio}>
+            <button
+              type="button"
+              className="topbar-btn primary"
+              onClick={onInitAudio}
+            >
               Initialize Audio
             </button>
           ) : (
             <button
-              className="secondary-btn"
+              type="button"
+              className={
+                "topbar-btn" + (isPlayingDemo ? " disabled" : "")
+              }
               onClick={onPlayTestScene}
               disabled={isPlayingDemo}
             >
@@ -34,17 +45,17 @@ export function TopBar({
             </button>
           )}
 
-          <span className="hint">
-            Play Core with your keyboard: A–K (C4 → C5)
-          </span>
+          <div className="topbar-output">
+            <span className="topbar-output-label">Output</span>
+            <div className="topbar-output-spectrum">
+              <MasterSpectrum audioReady={audioReady} />
+            </div>
+            <div className="topbar-output-meter">
+              <MasterMeter audioReady={audioReady} />
+            </div>
+          </div>
         </div>
-
-        <div className="top-controls-right">
-          <div className="top-output-label">Output</div>
-          <MasterSpectrum audioReady={audioReady} />
-          <MasterMeter audioReady={audioReady} />
-        </div>
-      </div>
-    </header>
+      </header>
+    </div>
   );
 }

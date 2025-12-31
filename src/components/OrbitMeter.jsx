@@ -7,39 +7,30 @@ export function OrbitMeter({ orbitId, audioReady }) {
   const [level, setLevel] = useState(0);
 
   useEffect(() => {
+    if (!audioReady) {
+      setLevel(0);
+      return;
+    }
+
     let frameId;
-    let running = true;
 
-    const update = () => {
-      if (!running) return;
-
-      // If audio isn't ready, force level to 0
-      const rawLevel = audioReady
-        ? omseEngine.getOrbitLevel(orbitId)
-        : 0;
-
-      // Clamp to [0, 1] just in case
-      const clamped = Math.max(0, Math.min(1, rawLevel));
-      setLevel(clamped);
-
-      frameId = requestAnimationFrame(update);
+    const loop = () => {
+      const v = omseEngine.getOrbitLevel(orbitId); // 0–1
+      setLevel(v);
+      frameId = requestAnimationFrame(loop);
     };
 
-    frameId = requestAnimationFrame(update);
-
+    loop();
     return () => {
-      running = false;
       if (frameId) cancelAnimationFrame(frameId);
     };
-  }, [orbitId, audioReady]);
-
-  const widthPercent = level * 100;
+  }, [audioReady, orbitId]);
 
   return (
     <div className="orbit-meter">
       <div
-        className="orbit-meter-inner"
-        style={{ width: `${widthPercent}%` }}
+        className="orbit-meter-fill"
+        style={{ transform: `scaleX(${level})` }}
       />
     </div>
   );
