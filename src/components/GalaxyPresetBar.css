@@ -55,13 +55,14 @@
 
 .galaxy-preset-chip-row {
   display: inline-flex;
+  flex-wrap: wrap; /* allow 5 chips comfortably */
   gap: 8px;
   padding: 4px 8px;
   border-radius: 999px;
   background: rgba(8, 11, 24, 0.9);
 }
 
-/* individual chips (Preset A / Preset B etc) */
+/* individual chips */
 
 .galaxy-preset-chip {
   border-radius: 999px;
@@ -73,8 +74,11 @@
   background: rgba(16, 20, 38, 0.98);
   color: rgba(188, 204, 238, 0.92);
   cursor: pointer;
-  transition: background var(--transition-fast), color var(--transition-fast),
-    border-color var(--transition-fast), box-shadow var(--transition-fast),
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast),
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast),
     transform var(--transition-fast);
 }
 

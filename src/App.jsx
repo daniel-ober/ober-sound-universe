@@ -6,6 +6,7 @@ import { TopBar } from "./components/TopBar";
 import { GalaxyPresetBar } from "./components/GalaxyPresetBar";
 import { UniverseLayout } from "./components/UniverseLayout";
 
+import { MASTER_PRESETS } from "./presets/masterPresets";
 import "./App.css";
 
 const KEY_TO_NOTE = {
@@ -19,55 +20,20 @@ const KEY_TO_NOTE = {
   k: "C5",
 };
 
-// Simple dev presets for Galaxy0
-const GALAXY0_PRESETS = {
-  presetA: {
-    core: {
-      ground: { gain: 90, muted: false },
-      harmony: { gain: 65, muted: false },
-      atmos: { gain: 55, muted: false },
-    },
-    orbits: {
-      orbitA: { gain: 70, muted: false },
-      orbitB: { gain: 60, muted: false },
-      orbitC: { gain: 45, muted: false },
-    },
-    orbitPatterns: {
-      orbitA: true,
-      orbitB: false,
-      orbitC: true,
-    },
-  },
-  presetB: {
-    core: {
-      ground: { gain: 55, muted: false },
-      harmony: { gain: 80, muted: false },
-      atmos: { gain: 75, muted: false },
-    },
-    orbits: {
-      orbitA: { gain: 50, muted: false },
-      orbitB: { gain: 70, muted: false },
-      orbitC: { gain: 65, muted: false },
-    },
-    orbitPatterns: {
-      orbitA: true,
-      orbitB: true,
-      orbitC: false,
-    },
-  },
-};
+const galaxy0 = MASTER_PRESETS.galaxy0;
+const DEFAULT_PRESET_ID = galaxy0.defaultPresetId;
+const DEFAULT_PRESET = galaxy0.presets[DEFAULT_PRESET_ID];
 
 function App() {
   const [audioReady, setAudioReady] = useState(false);
   const [isPlayingDemo, setIsPlayingDemo] = useState(false);
 
-  const [activePreset, setActivePreset] = useState("presetA");
-  const [coreLayers, setCoreLayers] = useState(GALAXY0_PRESETS.presetA.core);
-  const [orbitLayers, setOrbitLayers] = useState(
-    GALAXY0_PRESETS.presetA.orbits
-  );
+  // use canonical master presets
+  const [activePresetId, setActivePresetId] = useState(DEFAULT_PRESET_ID);
+  const [coreLayers, setCoreLayers] = useState(DEFAULT_PRESET.core);
+  const [orbitLayers, setOrbitLayers] = useState(DEFAULT_PRESET.orbits);
   const [orbitPatterns, setOrbitPatterns] = useState(
-    GALAXY0_PRESETS.presetA.orbitPatterns
+    DEFAULT_PRESET.orbitPatterns
   );
 
   // -------------------------------
@@ -140,8 +106,10 @@ function App() {
     await omseEngine.startAudioContext();
     setAudioReady(true);
 
-    const preset = GALAXY0_PRESETS[activePreset];
-    syncToEngine(preset.core, preset.orbits, preset.orbitPatterns);
+    const preset = galaxy0.presets[activePresetId];
+    if (preset) {
+      syncToEngine(preset.core, preset.orbits, preset.orbitPatterns);
+    }
   };
 
   const handlePlayTestScene = async () => {
@@ -152,10 +120,10 @@ function App() {
   };
 
   const handleApplyPreset = (presetId) => {
-    const preset = GALAXY0_PRESETS[presetId];
+    const preset = galaxy0.presets[presetId];
     if (!preset) return;
 
-    setActivePreset(presetId);
+    setActivePresetId(presetId);
     setCoreLayers(preset.core);
     setOrbitLayers(preset.orbits);
     setOrbitPatterns(preset.orbitPatterns);
@@ -242,7 +210,7 @@ function App() {
               />
 
               <GalaxyPresetBar
-                activePreset={activePreset}
+                activePreset={activePresetId}
                 onSelectPreset={handleApplyPreset}
               />
             </div>
@@ -271,6 +239,7 @@ function App() {
               onOrbitGainChange={handleOrbitGainChange}
               onOrbitMuteToggle={handleOrbitMuteToggle}
               onOrbitPatternToggle={handleOrbitPatternToggle}
+              activePresetId={activePresetId}
             />
 
             {/* BOTTOM: future mixer / transport row */}

@@ -28,15 +28,28 @@ export function CoreMixer({
   coreLayers,
   onLayerGainChange,
   onLayerMuteToggle,
+  bannerUrl,          // 👈 new: master preset banner
 }) {
   return (
     <div className="core-rack">
-      {/* top mini-header inside the Core panel */}
+      {/* ✨ Master preset banner (uses PNG if provided) */}
+      <div
+        className={
+          "core-rack-banner" + (bannerUrl ? " has-banner-image" : "")
+        }
+        style={bannerUrl ? { backgroundImage: `url(${bannerUrl})` } : undefined}
+      >
+        <div className="core-rack-banner-overlay">
+          <span className="core-rack-banner-title">CORE SCENE</span>
+          <span className="core-rack-banner-status">
+            {audioReady ? "READY" : "NOT INITIALIZED"}
+          </span>
+        </div>
+      </div>
+
+      {/* thin sub-header like “MASTER PRESET” bar */}
       <header className="core-rack-header">
-        <span className="core-rack-title">Core Scene</span>
-        <span className="core-rack-status">
-          {audioReady ? "READY" : "NOT INITIALIZED"}
-        </span>
+        <span className="core-rack-title">Core Layers</span>
       </header>
 
       <div className="core-rack-strips">
@@ -61,7 +74,7 @@ export function CoreMixer({
                 </div>
               </div>
 
-              {/* animated level meter (sits between title band + controls) */}
+              {/* animated level meter between title band + controls */}
               <CoreLayerMeter layerId={id} audioReady={audioReady} />
 
               {/* controls row – slider + mute */}

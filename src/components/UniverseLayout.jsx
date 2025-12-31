@@ -1,6 +1,10 @@
 // src/components/UniverseLayout.jsx
+import "./UniverseLayout.css";
 import { CoreMixer } from "./CoreMixer";
-import { OrbitPanel } from "./OrbitPanel"; // 👈 singular
+import { OrbitPanel } from "./OrbitPanel";
+import { MASTER_PRESETS } from "../presets/masterPresets";
+
+const galaxy0 = MASTER_PRESETS.galaxy0;
 
 export function UniverseLayout({
   audioReady,
@@ -12,7 +16,12 @@ export function UniverseLayout({
   onOrbitGainChange,
   onOrbitMuteToggle,
   onOrbitPatternToggle,
+  activePresetId,
 }) {
+  const fallbackId = galaxy0.defaultPresetId;
+  const active = galaxy0.presets[activePresetId] || galaxy0.presets[fallbackId];
+  const bannerUrl = active?.banner;
+
   return (
     <section className="instrument-row-main">
       <main className="universe">
@@ -45,18 +54,21 @@ export function UniverseLayout({
               coreLayers={coreLayers}
               onLayerGainChange={onLayerGainChange}
               onLayerMuteToggle={onLayerMuteToggle}
+              bannerUrl={bannerUrl}
             />
           </section>
 
           {/* RIGHT: Orbit voices */}
-          <OrbitPanel
-            audioReady={audioReady}
-            orbitLayers={orbitLayers}
-            orbitPatterns={orbitPatterns}
-            onOrbitGainChange={onOrbitGainChange}
-            onOrbitMuteToggle={onOrbitMuteToggle}
-            onOrbitPatternToggle={onOrbitPatternToggle}
-          />
+          <section className="orbits-column">
+            <OrbitPanel
+              audioReady={audioReady}
+              orbitLayers={orbitLayers}
+              orbitPatterns={orbitPatterns}
+              onOrbitGainChange={onOrbitGainChange}
+              onOrbitMuteToggle={onOrbitMuteToggle}
+              onOrbitPatternToggle={onOrbitPatternToggle}
+            />
+          </section>
         </div>
       </main>
     </section>
