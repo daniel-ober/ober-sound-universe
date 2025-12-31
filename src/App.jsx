@@ -1,10 +1,11 @@
 // src/App.jsx
 import { useEffect, useState } from "react";
 import { omseEngine } from "./engine/omseEngine";
-import { CoreMixer } from "./components/CoreMixer";
-import { VoiceCard } from "./components/VoiceCard";
+
 import { TopBar } from "./components/TopBar";
 import { GalaxyPresetBar } from "./components/GalaxyPresetBar";
+import { UniverseLayout } from "./components/UniverseLayout";
+
 import "./App.css";
 
 const KEY_TO_NOTE = {
@@ -260,88 +261,17 @@ function App() {
             </section>
 
             {/* MAIN: Core (left) + Orbits (right) */}
-            <section className="instrument-row-main">
-              <main className="universe">
-                <div className="universe-layout">
-                  {/* LEFT: Core / Gravity */}
-                  <section className="core-panel">
-                    <h2 className="section-title">CORE</h2>
-                    <p className="section-subtitle">
-                      The emotional heart of the current Galaxy. Core is a
-                      three-layer instrument: Ground, Harmony, and Atmosphere.
-                    </p>
-
-                    <p className="status-line">
-                      <span className="status-label">Audio status:</span>{" "}
-                      <span className={audioReady ? "status-ok" : "status-bad"}>
-                        {audioReady ? "READY" : "NOT INITIALIZED"}
-                      </span>
-                    </p>
-
-                    <div className="core-layers-header">
-                      <span className="eyebrow-label">Core Layers</span>
-                      <p className="core-layers-copy">
-                        Shape the Core engine by balancing low foundation,
-                        harmonic body, and atmospheric air.
-                      </p>
-                    </div>
-
-                    <CoreMixer
-                      audioReady={audioReady}
-                      coreLayers={coreLayers}
-                      onLayerGainChange={handleLayerGainChange}
-                      onLayerMuteToggle={handleLayerMuteToggle}
-                    />
-                  </section>
-
-                  {/* RIGHT: Orbit voices */}
-                  <section className="orbits-column">
-                    <div className="orbits-header">
-                      <span className="eyebrow-label">Orbit Voices</span>
-                    </div>
-
-                    <div className="orbits-stack">
-                      <VoiceCard
-                        id="orbitA"
-                        name="Orbit A"
-                        description="First orbiting voice."
-                        audioReady={audioReady}
-                        layerState={orbitLayers.orbitA}
-                        onGainChange={handleOrbitGainChange}
-                        onToggleMute={handleOrbitMuteToggle}
-                        supportsPattern
-                        patternActive={orbitPatterns.orbitA}
-                        onTogglePattern={handleOrbitPatternToggle}
-                      />
-                      <VoiceCard
-                        id="orbitB"
-                        name="Orbit B"
-                        description="Second orbiting voice."
-                        audioReady={audioReady}
-                        layerState={orbitLayers.orbitB}
-                        onGainChange={handleOrbitGainChange}
-                        onToggleMute={handleOrbitMuteToggle}
-                        supportsPattern
-                        patternActive={orbitPatterns.orbitB}
-                        onTogglePattern={handleOrbitPatternToggle}
-                      />
-                      <VoiceCard
-                        id="orbitC"
-                        name="Orbit C"
-                        description="Third orbiting voice."
-                        audioReady={audioReady}
-                        layerState={orbitLayers.orbitC}
-                        onGainChange={handleOrbitGainChange}
-                        onToggleMute={handleOrbitMuteToggle}
-                        supportsPattern
-                        patternActive={orbitPatterns.orbitC}
-                        onTogglePattern={handleOrbitPatternToggle}
-                      />
-                    </div>
-                  </section>
-                </div>
-              </main>
-            </section>
+            <UniverseLayout
+              audioReady={audioReady}
+              coreLayers={coreLayers}
+              orbitLayers={orbitLayers}
+              orbitPatterns={orbitPatterns}
+              onLayerGainChange={handleLayerGainChange}
+              onLayerMuteToggle={handleLayerMuteToggle}
+              onOrbitGainChange={handleOrbitGainChange}
+              onOrbitMuteToggle={handleOrbitMuteToggle}
+              onOrbitPatternToggle={handleOrbitPatternToggle}
+            />
 
             {/* BOTTOM: future mixer / transport row */}
             <section className="instrument-row-bottom">

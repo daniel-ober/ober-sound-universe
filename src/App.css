@@ -102,7 +102,6 @@ body {
    INSTRUMENT FRAME (the "hardware" skin)
    ===================================== */
 
-/* Outer metal frame with fixed 16:9 aspect */
 .instrument-frame {
   width: min(1600px, 100vw - 32px);
   aspect-ratio: 16 / 9;
@@ -157,12 +156,7 @@ body {
   border-radius: 24px;
   padding: 18px 24px 20px;
   box-sizing: border-box;
-
-  /* Base metal plate from PNG */
-  background:
-    url("/assets/skins/inner-panel.png") center/cover no-repeat;
-
-  /* Soft overlay glow on top of the plate */
+  background: url("/assets/skins/inner-panel.png") center/cover no-repeat;
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.03),
     0 26px 60px rgba(0, 0, 0, 0.9);
@@ -173,7 +167,6 @@ body {
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  /* Slightly darken and vignette the center so panels pop more */
   background:
     radial-gradient(circle at 50% 10%, rgba(255, 255, 255, 0.02), transparent 55%),
     radial-gradient(circle at 50% 120%, rgba(0, 0, 0, 0.45), transparent 55%),
@@ -183,24 +176,16 @@ body {
   z-index: 0;
 }
 
-/* Make sure the actual UI sits above the overlay */
-.instrument-grid {
-  display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
-  row-gap: 10px; /* was 14px – tighter stack */
-  height: 100%;
-}
+/* ====================
+   MAIN GRID LAYOUT
+   ==================== */
 
-/* Grid rows roughly matching the concept image:
-   - top rail (tabs + transport / preset bar)
-   - spectrum strip
-   - main panels (core + orbits)
-   - bottom rail (future mixer / transport)
-*/
 .instrument-grid {
+  position: relative;
+  z-index: 1;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr) auto;
-  row-gap: 14px;
+  row-gap: 10px;
   height: 100%;
 }
 
@@ -211,7 +196,6 @@ body {
 }
 
 .instrument-row-spectrum {
-  /* tuck spectrum a bit closer to the panels */
   margin-top: 2px;
   margin-bottom: -6px;
 }
@@ -239,10 +223,10 @@ body {
   gap: 22px;
   height: 100%;
   align-items: stretch;
-  position: relative; /* NEW: so ::before can anchor here */
+  position: relative;
 }
 
-/* center divider rail */
+/* center divider rail between Core and Orbits */
 .universe-layout::before {
   content: "";
   position: absolute;
@@ -269,18 +253,18 @@ body {
   border-radius: var(--radius-xl);
   background: radial-gradient(
       circle at 0 0,
-      rgba(145, 188, 255, 0.1),
+      rgba(145, 188, 255, 0.12),
       transparent 70%
     ),
     radial-gradient(
       circle at 100% 0,
-      rgba(255, 210, 140, 0.05),
+      rgba(255, 210, 140, 0.06),
       transparent 65%
     ),
-    linear-gradient(135deg, rgba(4, 8, 22, 0.98), rgba(8, 15, 32, 0.98));
+    linear-gradient(135deg, rgba(4, 8, 22, 0.98), rgba(8, 15, 32, 0.99));
   border: 1px solid var(--border-soft);
   box-shadow: var(--shadow-soft);
-  padding: 22px 26px 24px;
+  padding: 20px 26px 22px;
   position: relative;
   overflow: hidden;
 }
@@ -294,21 +278,18 @@ body {
   pointer-events: none;
 }
 
+/* shared inner bevel treatment with orbits */
 .core-panel,
 .orbits-column {
   position: relative;
   z-index: 0;
-  padding-top: 20px;   /* was 22px / 18px */
-  padding-bottom: 22px;
 }
 
-/* push the existing border layer behind content */
 .core-panel::before,
 .orbits-column::before {
   z-index: -2;
 }
 
-/* new soft top highlight + bottom shadow inside each panel */
 .core-panel::after,
 .orbits-column::after {
   content: "";
@@ -317,18 +298,18 @@ body {
   border-radius: inherit;
   pointer-events: none;
   z-index: -1;
-  background:
-    linear-gradient(
-      180deg,
-      rgba(255, 255, 255, 0.16) 0%,
-      transparent 18%,
-      transparent 72%,
-      rgba(0, 0, 0, 0.55) 100%
-    );
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.16) 0%,
+    transparent 18%,
+    transparent 72%,
+    rgba(0, 0, 0, 0.6) 100%
+  );
   mix-blend-mode: soft-light;
 }
 
-/* (These map to your existing markup: section-title, section-subtitle, status-line, etc.) */
+/* typography */
+
 .section-title {
   text-transform: uppercase;
   letter-spacing: 0.18em;
@@ -400,7 +381,7 @@ body {
 .gravity-spectrum-inner {
   position: relative;
   border-radius: var(--radius-pill);
-  padding: 6px 26px;       /* was 10px 26px */
+  padding: 6px 26px;
   background: transparent;
   border: none;
   box-shadow: none;
@@ -409,7 +390,7 @@ body {
 
 .gravity-spectrum-rail {
   width: 100%;
-  height: 58px; /* was 64px – more like the concept */
+  height: 58px;
   border-radius: 999px;
   background: url("/assets/skins/spectrum-frame.png") center/cover no-repeat;
   border: none;
@@ -418,12 +399,10 @@ body {
   overflow: hidden;
 }
 
-/* We don’t need the old ::before glow anymore */
 .gravity-spectrum-rail::before {
   content: none;
 }
 
-/* top tiny label */
 .gravity-spectrum-header {
   position: absolute;
   top: 7px;
@@ -433,10 +412,6 @@ body {
   text-transform: uppercase;
   color: rgba(180, 195, 230, 0.8);
 }
-
-/* optional highlight overlay if you want to keep some glow:
-.gravity-spectrum-rail::before { ... }
-*/
 
 .gravity-spectrum-tag {
   position: absolute;
@@ -454,74 +429,361 @@ body {
 
 .orbits-column {
   border-radius: var(--radius-xl);
-  padding: 18px 0 0;
   background: radial-gradient(
       circle at 100% 0%,
-      rgba(255, 190, 140, 0.16),
+      rgba(255, 190, 140, 0.18),
       transparent 65%
     ),
     radial-gradient(
       circle at 0 100%,
-      rgba(108, 188, 255, 0.16),
+      rgba(108, 188, 255, 0.18),
       transparent 60%
     ),
-    linear-gradient(145deg, rgba(6, 10, 30, 0.96), rgba(6, 7, 22, 0.98));
+    linear-gradient(145deg, rgba(6, 10, 30, 0.98), rgba(6, 7, 22, 0.99));
   border: 1px solid var(--border-soft);
   box-shadow: var(--shadow-soft);
-  padding-inline: 18px;
+  padding: 18px 18px 20px;
   position: relative;
   overflow: hidden;
-}
 
-.orbits-column::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  border: 1px solid rgba(255, 255, 255, 0.02);
-  pointer-events: none;
+  /* NEW: let inner grid stretch to full height */
+  display: flex;
+  flex-direction: column;
 }
 
 .orbits-header {
   padding-inline: 6px 10px;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
+  position: relative;
 }
 
 .orbits-header .eyebrow-label {
   font-size: 10px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: rgba(171, 187, 220, 0.85);
+  color: rgba(171, 187, 220, 0.9);
 }
 
-.orbits-stack {
+.orbits-header::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -6px;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.18),
+    rgba(255, 255, 255, 0.05),
+    transparent
+  );
+  opacity: 0.65;
+}
+
+/* two-column layout: Orbit Group Preset (left) + Orbit channels (right) */
+
+.orbits-layout-row {
+  /* NEW: fill remaining column height */
+  flex: 1;
+  min-height: 0;
+
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  gap: 14px;
+  padding-top: 14px;
+  align-items: stretch;
+}
+
+/* ===========================
+   ORBIT GROUP PRESET PANEL
+   =========================== */
+
+.orbit-group-panel {
+  border-radius: 18px;
+  background: linear-gradient(
+      180deg,
+      rgba(19, 25, 46, 0.96),
+      rgba(10, 13, 26, 0.98)
+    );
+  border: 1px solid rgba(255, 255, 255, 0.03);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.92);
+  padding: 10px 12px 12px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding-bottom: 18px;
+  gap: 8px;
+
+  /* NEW: stretch with rack so everything feels like one block */
+  min-height: 0;
 }
 
-/* Orbit voice card (already wired to VoiceCard) */
-
-.voice-card {
-  border-radius: 18px;
-  padding: 18px 20px 18px;
+.orbit-group-title-bar {
+  position: relative;
+  border-radius: 12px;
+  padding: 6px 10px 7px;
   background: radial-gradient(
-      circle at 20% 0%,
-      rgba(255, 197, 148, 0.1),
+      circle at 0 0,
+      rgba(168, 210, 255, 0.22),
       transparent 60%
     ),
     radial-gradient(
-      circle at 100% 40%,
-      rgba(108, 228, 255, 0.05),
+      circle at 100% 0,
+      rgba(255, 208, 144, 0.22),
       transparent 60%
     ),
-    linear-gradient(145deg, rgba(8, 11, 26, 0.96), rgba(6, 10, 24, 0.98));
-  border: 1px solid rgba(255, 255, 255, 0.025);
+    linear-gradient(135deg, #151a28, #0d0f18);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.orbit-group-title {
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(233, 241, 255, 0.94);
+}
+
+.orbit-group-title-glow {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  width: 46px;
+  height: 2px;
+  border-radius: 999px;
+  transform: translateY(-50%);
+  background: linear-gradient(
+    90deg,
+    rgba(143, 203, 255, 0.1),
+    rgba(189, 226, 255, 0.95),
+    rgba(255, 255, 255, 0.2)
+  );
+}
+
+.orbit-group-main-preset {
+  margin-top: 4px;
+  width: 100%;
+  border-radius: 10px;
+  padding: 8px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: radial-gradient(
+      circle at 0 0,
+      rgba(255, 244, 193, 0.2),
+      transparent 65%
+    ),
+    linear-gradient(180deg, #202534, #131722);
+  color: rgba(236, 242, 255, 0.96);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  cursor: pointer;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.85);
+  transition: transform var(--transition-fast),
+    box-shadow var(--transition-fast),
+    border-color var(--transition-fast),
+    background var(--transition-fast);
+}
+
+.orbit-group-main-preset:hover {
+  transform: translateY(-0.5px);
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.9);
+}
+
+.orbit-group-main-name {
+  font-weight: 500;
+}
+
+.orbit-group-main-chevron {
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+/* tool row */
+
+.orbit-group-tool-row {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.orbit-tool-btn {
+  height: 22px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: radial-gradient(
+      circle at 50% 0%,
+      rgba(255, 255, 255, 0.07),
+      transparent 65%
+    ),
+    linear-gradient(180deg, #181b26, #10121d);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.75);
+  cursor: pointer;
+}
+
+.orbit-tool-btn.wide {
+  grid-column: span 2;
+}
+
+/* pattern strips */
+
+.orbit-group-pattern-list {
+  display: flex;
+  flex-direction: column;
+  margin-top: 4px;
+  gap: 4px;
+}
+
+.orbit-pattern-strip {
+  border-radius: 8px;
+  padding: 6px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: linear-gradient(180deg, #181d29, #12151f);
+  color: rgba(230, 237, 255, 0.95);
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  column-gap: 8px;
+  font-size: 12px;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.85);
+}
+
+.orbit-pattern-strip:hover {
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.orbit-pattern-meter {
+  font-size: 11px;
+  opacity: 0.85;
+}
+
+.orbit-pattern-name {
+  justify-self: flex-start;
+}
+
+.orbit-pattern-chevron {
+  font-size: 11px;
+  opacity: 0.75;
+}
+
+/* bottom mini-orbit thumbnails */
+
+.orbit-mini-orbits-row {
+  margin-top: 6px;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.orbit-mini-orbit {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.orbit-mini-art {
+  width: 54px;
+  height: 54px;
+  border-radius: 999px;
+  border: 3px solid rgba(255, 255, 255, 0.4);
+  background: radial-gradient(
+      circle at 30% 0%,
+      rgba(255, 196, 150, 0.9),
+      transparent 55%
+    ),
+    radial-gradient(
+      circle at 70% 100%,
+      rgba(106, 231, 255, 0.8),
+      transparent 55%
+    ),
+    radial-gradient(
+      circle at 50% 50%,
+      rgba(184, 139, 255, 0.9),
+      transparent 60%
+    );
+  box-shadow:
+    0 0 20px rgba(0, 0, 0, 0.95),
+    0 0 24px rgba(109, 186, 255, 0.4);
+}
+
+.orbit-mini-a .orbit-mini-art {
+  background: radial-gradient(
+      circle at 20% 0%,
+      rgba(255, 180, 120, 0.95),
+      transparent 55%
+    ),
+    radial-gradient(
+      circle at 75% 100%,
+      rgba(255, 120, 80, 0.85),
+      transparent 55%
+    );
+}
+
+.orbit-mini-b .orbit-mini-art {
+  background: radial-gradient(
+      circle at 20% 0%,
+      rgba(125, 235, 255, 0.95),
+      transparent 55%
+    ),
+    radial-gradient(
+      circle at 75% 100%,
+      rgba(62, 156, 255, 0.9),
+      transparent 55%
+    );
+}
+
+.orbit-mini-c .orbit-mini-art {
+  background: radial-gradient(
+      circle at 20% 0%,
+      rgba(255, 170, 225, 0.95),
+      transparent 55%
+    ),
+    radial-gradient(
+      circle at 75% 100%,
+      rgba(178, 120, 255, 0.9),
+      transparent 55%
+    );
+}
+
+.orbit-mini-label {
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(211, 222, 252, 0.96);
+}
+
+/* =======================
+   ORBIT VOICE “ROW” CARDS
+   ======================= */
+
+.orbit-voices-rack {
+  /* NEW: stretch to fill right-hand side */
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+
+.voice-card {
+  border-radius: 16px;
+  padding: 12px 14px 12px;
+  background:
+    radial-gradient(circle at 0 0, rgba(255, 215, 160, 0.14), transparent 55%),
+    radial-gradient(circle at 100% 100%, rgba(125, 208, 255, 0.12), transparent 60%),
+    linear-gradient(145deg, rgba(8, 11, 26, 0.98), rgba(6, 10, 24, 0.99));
+  border: 1px solid rgba(255, 255, 255, 0.035);
   color: rgba(232, 240, 255, 0.96);
-  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.85);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.9);
   position: relative;
   overflow: hidden;
+
+  /* NEW: let each Orbit strip share vertical space evenly */
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .voice-card::before {
@@ -529,11 +791,9 @@ body {
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  border: 1px solid rgba(255, 255, 255, 0.018);
+  border: 1px solid rgba(255, 255, 255, 0.03);
   pointer-events: none;
 }
-
-/* Title, subtitle, status */
 
 .voice-card h3 {
   font-size: 11px;
@@ -541,13 +801,13 @@ body {
   text-transform: uppercase;
   font-weight: 600;
   color: rgba(241, 246, 255, 0.98);
-  margin: 0 0 4px;
+  margin: 0 0 3px;
 }
 
 .voice-card .desc {
   font-size: 11px;
   color: rgba(173, 189, 223, 0.9);
-  margin: 0 0 6px;
+  margin: 0 0 4px;
 }
 
 .voice-card .status {
@@ -555,7 +815,7 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.16em;
   color: rgba(133, 151, 189, 0.9);
-  margin: 4px 0 14px;
+  margin: 2px 0 10px;
 }
 
 .voice-card .status strong {
@@ -563,10 +823,10 @@ body {
   color: rgba(230, 236, 255, 0.98);
 }
 
-/* Orbit activity + mixer rows */
+/* activity rail + pattern */
 
 .orbit-meter-block {
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .orbit-meter-label-row {
@@ -589,12 +849,12 @@ body {
 
 .orbit-pattern-btn {
   border-radius: 999px;
-  padding: 5px 13px;
+  padding: 6px 16px;
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.16em;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(18, 22, 40, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(18, 22, 40, 0.98);
   color: rgba(190, 205, 240, 0.9);
   cursor: pointer;
   transition: background var(--transition-fast),
@@ -605,19 +865,22 @@ body {
 .orbit-pattern-btn:hover:not(:disabled) {
   background: rgba(27, 33, 64, 0.98);
   box-shadow: 0 0 12px rgba(145, 191, 255, 0.6);
-  border-color: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.12);
   transform: translateY(-0.5px);
 }
 
 .orbit-pattern-btn--active {
   background: linear-gradient(135deg, #f5e29c, #f5c968);
   color: #171420;
-  border-color: rgba(255, 255, 255, 0.16);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.7), 0 0 16px rgba(255, 215, 145, 0.8);
+  border-color: rgba(255, 255, 255, 0.18);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.7),
+    0 0 16px rgba(255, 215, 145, 0.9);
 }
 
+/* mixer row */
+
 .orbit-mixer {
-  margin-top: 8px;
+  margin-top: 4px;
 }
 
 .orbit-mixer-label-row {
@@ -655,9 +918,9 @@ body {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.16em;
-  border: 1px solid rgba(255, 255, 255, 0.03);
-  background: rgba(19, 23, 40, 0.95);
-  color: rgba(199, 211, 236, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  background: rgba(19, 23, 40, 0.97);
+  color: rgba(199, 211, 236, 0.96);
   cursor: pointer;
   transition: background var(--transition-fast),
     border-color var(--transition-fast), box-shadow var(--transition-fast),
@@ -665,16 +928,16 @@ body {
 }
 
 .orbit-layer-mute-btn:hover:not(:disabled) {
-  background: rgba(30, 36, 66, 0.98);
-  border-color: rgba(255, 255, 255, 0.08);
-  box-shadow: 0 0 12px rgba(151, 185, 255, 0.5);
+  background: rgba(30, 36, 66, 0.99);
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 0 12px rgba(151, 185, 255, 0.55);
   transform: translateY(-0.5px);
 }
 
 .orbit-layer-mute-btn--active {
   background: linear-gradient(135deg, #3e3522, #2b2216);
   color: #f6e3b0;
-  border-color: rgba(255, 217, 149, 0.5);
+  border-color: rgba(255, 217, 149, 0.6);
 }
 
 /* =============================
@@ -682,7 +945,6 @@ body {
    ============================= */
 
 .instrument-row-bottom {
-  /* we’ll wire faders / knobs here later */
   margin-top: 2px;
 }
 
@@ -723,8 +985,21 @@ body {
     grid-template-columns: 1fr;
   }
 
-  .orbits-column {
-    margin-top: 10px;
+  .universe-layout::before {
+    display: none;
+  }
+
+  .orbits-layout-row {
+    grid-template-columns: 1fr;
+  }
+
+  .orbit-group-panel {
+    order: 1;
+  }
+
+  .orbit-voices-rack {
+    order: 2;
+    margin-top: 8px;
   }
 }
 

@@ -1,0 +1,184 @@
+/* ============================
+   CORE + ORBITS MAIN LAYOUT
+   ============================ */
+
+.universe {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.universe-layout {
+  display: grid;
+  grid-template-columns: 1.1fr 1.05fr;
+  gap: 22px;
+  height: 100%;
+  align-items: stretch;
+  position: relative;
+}
+
+/* center divider rail between Core and Orbits */
+.universe-layout::before {
+  content: "";
+  position: absolute;
+  top: 12px;
+  bottom: 16px;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-0.5px);
+  background: linear-gradient(
+    180deg,
+    transparent,
+    rgba(255, 255, 255, 0.18),
+    transparent
+  );
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+/* ======================
+   CORE PANEL (left side)
+   ====================== */
+
+.core-panel {
+  border-radius: 24px;
+  background: radial-gradient(
+      circle at 0 0,
+      rgba(145, 188, 255, 0.12),
+      transparent 70%
+    ),
+    radial-gradient(
+      circle at 100% 0,
+      rgba(255, 210, 140, 0.06),
+      transparent 65%
+    ),
+    linear-gradient(135deg, rgba(4, 8, 22, 0.98), rgba(8, 15, 32, 0.99));
+  border: 1px solid rgba(255, 255, 255, 0.02);
+  box-shadow: 0 26px 60px rgba(0, 0, 0, 0.95);
+  padding: 20px 26px 22px;
+  position: relative;
+  overflow: hidden;
+}
+
+.core-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.02);
+  pointer-events: none;
+}
+
+/* shared inner bevel treatment with orbits */
+.core-panel,
+.orbits-column {
+  position: relative;
+  z-index: 0;
+}
+
+.core-panel::before,
+.orbits-column::before {
+  z-index: -2;
+}
+
+.core-panel::after,
+.orbits-column::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: -1;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.16) 0%,
+    transparent 18%,
+    transparent 72%,
+    rgba(0, 0, 0, 0.6) 100%
+  );
+  mix-blend-mode: soft-light;
+}
+
+/* ======================
+   TYPOGRAPHY + COPY
+   ====================== */
+
+.section-title {
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(237, 244, 255, 0.96);
+  margin: 0 0 6px;
+}
+
+.section-subtitle {
+  font-size: 12px;
+  line-height: 1.5;
+  color: rgba(161, 177, 210, 0.82);
+  margin: 0 0 10px;
+}
+
+.status-line {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  margin: 0 0 18px;
+  color: rgba(130, 150, 190, 0.9);
+}
+
+.status-label {
+  opacity: 0.9;
+}
+
+.status-ok {
+  font-weight: 600;
+  color: #69f6c2;
+}
+
+.status-bad {
+  font-weight: 600;
+  color: #ff6b6b;
+}
+
+.core-layers-header {
+  margin-bottom: 12px;
+}
+
+.eyebrow-label {
+  display: inline-block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: rgba(130, 150, 190, 0.9);
+  margin-bottom: 4px;
+}
+
+.core-layers-copy {
+  font-size: 11px;
+  line-height: 1.5;
+  color: rgba(161, 177, 210, 0.82);
+  margin: 0;
+}
+
+/* ============
+   RESPONSIVE
+   ============ */
+
+@media (max-width: 1200px) {
+  .universe-layout {
+    grid-template-columns: 1.05fr 1fr;
+  }
+}
+
+@media (max-width: 1040px) {
+  .universe-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .universe-layout::before {
+    display: none;
+  }
+}
