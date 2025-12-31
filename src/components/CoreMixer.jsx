@@ -1,20 +1,27 @@
 // src/components/CoreMixer.jsx
-import { CoreLayerMeter } from "./CoreLayerMeter";
 import "./CoreMixer.css";
+import { CoreLayerMeter } from "./CoreLayerMeter";
 
-/**
- * CoreMixer
- *
- * UI-only mixer for the Core 3-layer engine:
- *  - Ground
- *  - Harmony
- *  - Atmosphere
- *
- * All audio logic is handled in omseEngine; this component just:
- *  - displays sliders + mute buttons
- *  - calls onLayerGainChange(id, newPercent)
- *  - calls onLayerMuteToggle(id)
- */
+const CORE_LAYERS_META = [
+  {
+    id: "ground",
+    label: "GROUND",
+    subtitle: "Warm Human Core",
+    themeClass: "core-strip--ground",
+  },
+  {
+    id: "harmony",
+    label: "HARMONY",
+    subtitle: "Harmonious Horizon",
+    themeClass: "core-strip--harmony",
+  },
+  {
+    id: "atmosphere",
+    label: "ATMOSPHERE",
+    subtitle: "Ascending Spirit",
+    themeClass: "core-strip--atmosphere",
+  },
+];
 
 export function CoreMixer({
   audioReady,
@@ -23,89 +30,71 @@ export function CoreMixer({
   onLayerMuteToggle,
 }) {
   return (
-    <div className="core-mixer">
-      <h3>Core Layers</h3>
-      <p className="core-mixer-hint">
-        Shape the Core engine by balancing low foundation, harmonic body, and
-        atmospheric air.
-      </p>
+    <div className="core-rack">
+      {/* top mini-header inside the Core panel */}
+      <header className="core-rack-header">
+        <span className="core-rack-title">Core Scene</span>
+        <span className="core-rack-status">
+          {audioReady ? "READY" : "NOT INITIALIZED"}
+        </span>
+      </header>
 
-      <CoreLayerRow
-        id="ground"
-        label="Ground"
-        layerState={coreLayers.ground}
-        audioReady={audioReady}
-        onGainChange={onLayerGainChange}
-        onToggleMute={onLayerMuteToggle}
-      />
-      <CoreLayerRow
-        id="harmony"
-        label="Harmony"
-        layerState={coreLayers.harmony}
-        audioReady={audioReady}
-        onGainChange={onLayerGainChange}
-        onToggleMute={onLayerMuteToggle}
-      />
-      <CoreLayerRow
-        id="atmos"
-        label="Atmosphere"
-        layerState={coreLayers.atmos}
-        audioReady={audioReady}
-        onGainChange={onLayerGainChange}
-        onToggleMute={onLayerMuteToggle}
-      />
-    </div>
-  );
-}
+      <div className="core-rack-strips">
+        {CORE_LAYERS_META.map(({ id, label, subtitle, themeClass }) => {
+          const layerState = coreLayers?.[id] || { gain: 0, muted: false };
+          const percent = Math.round(layerState.gain ?? 0);
 
-function CoreLayerRow({
-  id,
-  label,
-  layerState,
-  audioReady,
-  onGainChange,
-  onToggleMute,
-}) {
-  const handleSliderChange = (e) => {
-    const value = Number(e.target.value);
-    onGainChange(id, value);
-  };
+          return (
+            <div key={id} className={`core-strip ${themeClass}`}>
+              {/* gradient spectrum underlay */}
+              <div className="core-strip-bg" />
 
-  const handleMuteClick = () => {
-    onToggleMute(id);
-  };
+              {/* glass top bar with label + name + percent */}
+              <div className="core-strip-inner">
+                <div className="core-strip-text">
+                  <span className="core-strip-label">{label}</span>
+                  <span className="core-strip-name">{subtitle}</span>
+                </div>
 
-  return (
-    <div className="core-layer-row">
-      <div className="core-layer-label">
-        <span className="core-layer-name">{label}</span>
-        <span className="core-layer-percent">{layerState.gain}%</span>
+                <div className="core-strip-meta">
+                  <span className="core-strip-percent">{percent}%</span>
+                </div>
+              </div>
+
+              {/* animated level meter (sits between title band + controls) */}
+              <CoreLayerMeter layerId={id} audioReady={audioReady} />
+
+              {/* controls row – slider + mute */}
+              <div className="core-strip-controls">
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={percent}
+                  disabled={!audioReady}
+                  onChange={(e) =>
+                    onLayerGainChange(id, Number(e.target.value))
+                  }
+                  className="core-strip-slider"
+                />
+
+                <button
+                  type="button"
+                  disabled={!audioReady}
+                  onClick={() => onLayerMuteToggle(id)}
+                  className={
+                    layerState.muted
+                      ? "core-strip-mute core-strip-mute--active"
+                      : "core-strip-mute"
+                  }
+                >
+                  {layerState.muted ? "Muted" : "Mute"}
+                </button>
+              </div>
+            </div>
+          );
+        })}
       </div>
-
-      <div className="core-layer-controls">
-        <input
-          type="range"
-          min={0}
-          max={100}
-          value={layerState.gain}
-          onChange={handleSliderChange}
-          disabled={!audioReady}
-          className="core-layer-slider"
-        />
-        <button
-          type="button"
-          onClick={handleMuteClick}
-          disabled={!audioReady}
-          className={
-            "core-layer-mute-btn" +
-            (layerState.muted ? " core-layer-mute-btn--active" : "")
-          }
-        >
-          {layerState.muted ? "Unmute" : "Mute"}
-        </button>
-      </div>
-
-      <CoreLayerMeter layerId={id} audioReady={audioReady} />
     </div>
   );
 }
