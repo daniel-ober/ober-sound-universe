@@ -8,41 +8,70 @@ import "./MasterSpectrum.css";
  *
  * A small horizontal bar of ~24 frequency bins for the master output.
  * Uses requestAnimationFrame to query OMSE's getMasterSpectrum().
+ *
+ * ✅ Defensive:
+ *  - Never hard-crashes if getMasterSpectrum is missing / engine not ready
+ *  - Sanitizes values to finite numbers
+ *  - Clamps values to 0..1
  */
 export function MasterSpectrum({ audioReady }) {
-  const [bars, setBars] = useState(() => new Array(24).fill(0));
+  const BAR_COUNT = 24;
+
+  const [bars, setBars] = useState(() => new Array(BAR_COUNT).fill(0));
   const rafRef = useRef(null);
 
   useEffect(() => {
+    // always cancel any prior loop
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+
+    // if not ready, show zeros and stop
     if (!audioReady) {
-      setBars((prev) => prev.map(() => 0));
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      setBars(new Array(BAR_COUNT).fill(0));
+      rafRef.current = null;
       return;
     }
 
     const update = () => {
-      const spectrum = omseEngine.getMasterSpectrum();
-      if (spectrum && spectrum.length) {
-        const bucketSize = Math.floor(spectrum.length / bars.length) || 1;
-        const next = new Array(bars.length).fill(0);
+      // ✅ SAFE: method might not exist yet
+      const fn = omseEngine?.getMasterSpectrum;
+      const raw = typeof fn === "function" ? fn() : [];
 
-        for (let i = 0; i < bars.length; i++) {
-          let sum = 0;
-          let count = 0;
+      // ✅ SAFE: spectrum may be non-array
+      const spectrum = Array.isArray(raw) ? raw : [];
+
+      if (spectrum.length) {
+        const next = new Array(BAR_COUNT).fill(0);
+
+        // bucket spectrum bins down to BAR_COUNT bars
+        const bucketSize = Math.max(1, Math.floor(spectrum.length / BAR_COUNT));
+
+        for (let i = 0; i < BAR_COUNT; i++) {
           const start = i * bucketSize;
           const end = Math.min(start + bucketSize, spectrum.length);
 
+          let sum = 0;
+          let count = 0;
+
           for (let j = start; j < end; j++) {
-            sum += spectrum[j];
-            count++;
+            const v = spectrum[j];
+            if (typeof v === "number" && Number.isFinite(v)) {
+              sum += v;
+              count++;
+            }
           }
 
-          const avg = count ? sum / count : 0;
+          let avg = count ? sum / count : 0;
+
+          // ✅ clamp to 0..1 (prevents NaN / huge values blowing up CSS)
+          if (!Number.isFinite(avg)) avg = 0;
+          avg = Math.max(0, Math.min(1, avg));
+
           next[i] = avg;
         }
+
         setBars(next);
       } else {
-        setBars((prev) => prev.map(() => 0));
+        setBars(new Array(BAR_COUNT).fill(0));
       }
 
       rafRef.current = requestAnimationFrame(update);
@@ -52,22 +81,28 @@ export function MasterSpectrum({ audioReady }) {
 
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [audioReady]);
 
   return (
     <div className="master-spectrum">
-      {bars.map((v, idx) => (
-        <div
-          key={idx}
-          className="master-spectrum-bar"
-          style={{
-            transform: `scaleY(${0.2 + v * 0.8})`,
-            opacity: 0.3 + v * 0.7,
-          }}
-        />
-      ))}
+      {bars.map((v, idx) => {
+        // ✅ safe visuals (v is already clamped 0..1)
+        const scale = 0.2 + v * 0.8;
+        const opacity = 0.25 + v * 0.75;
+
+        return (
+          <div
+            key={idx}
+            className="master-spectrum-bar"
+            style={{
+              transform: `scaleY(${scale})`,
+              opacity,
+            }}
+          />
+        );
+      })}
     </div>
   );
 }

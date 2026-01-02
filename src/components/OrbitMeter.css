@@ -1,10 +1,14 @@
+/* src/components/OrbitMeter.css */
+
 .orbit-meter {
   width: 100%;
-  height: 6px;
+  height: 7px;
   border-radius: 999px;
   background: rgba(15, 23, 42, 0.95);
   overflow: hidden;
   position: relative;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.55);
 }
 
 .orbit-meter-fill {
@@ -12,6 +16,6 @@
   height: 100%;
   border-radius: inherit;
   transform-origin: left;
-  background: linear-gradient(90deg, #38bdf8, #6366f1, #ec4899);
-  opacity: 0.9;
+  background: linear-gradient(90deg, rgba(56, 189, 248, 0.95), rgba(99, 102, 241, 0.95), rgba(236, 72, 153, 0.95));
+  opacity: 0.92;
 }

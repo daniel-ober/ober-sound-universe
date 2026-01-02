@@ -8,15 +8,16 @@ function makeMeter() {
   return new Tone.Meter({
     channels: 1,
     smoothing: 0.8,
-    normalRange: true, // 🔥 gives us a 0–1 range instead of dB
+    normalRange: true, // 0–1 range instead of dB
   });
 }
 
 /**
  * Ober MotionSynth Engine (OMSE)
- * - Core: 3 layered polysynth (ground, harmony, atmos)
+ * - Core: 3 layered polysynth (ground, harmony, atmosphere)
  * - Orbits: 3 satellite voices (A/B/C)
  * - Meters for: master, core buss, core layers, orbits
+ * - Master spectrum analyser for UI spectrum bar
  * - Per-orbit pattern loops
  */
 class OMSEEngine {
@@ -27,6 +28,9 @@ class OMSEEngine {
     this.masterGain = null;
     this.masterMeter = null;
 
+    // Spectrum analyser (for MasterSpectrum.jsx)
+    this.masterAnalyser = null;
+
     // Core buss + layers
     this.coreBuss = null;
     this.coreMeter = null;
@@ -34,7 +38,8 @@ class OMSEEngine {
       layers: {
         ground: null,
         harmony: null,
-        atmos: null,
+        // IMPORTANT: matches CoreMixer.jsx layer id "atmosphere"
+        atmosphere: null,
       },
     };
 
@@ -207,13 +212,9 @@ class OMSEEngine {
     const shouldStart = !!isOn;
 
     if (shouldStart) {
-      if (loop.state !== "started") {
-        loop.start(0);
-      }
+      if (loop.state !== "started") loop.start(0);
     } else {
-      if (loop.state === "started") {
-        loop.stop();
-      }
+      if (loop.state === "started") loop.stop();
     }
   }
 
@@ -221,38 +222,64 @@ class OMSEEngine {
 
   getMasterLevel() {
     if (!this.masterMeter) return 0;
-    const v = this.masterMeter.getValue(); // already 0–1
+    const v = this.masterMeter.getValue();
     return this._clamp01(v);
   }
 
-  getCoreLayerLevel(layerId) {
-    const layer = this.core.layers[layerId];
+  // Arrow fn so it’s always bound (safe for RAF usage)
+  getCoreLayerLevel = (layerId) => {
+    const layer = this.core?.layers?.[layerId];
     if (!layer || !layer.meter) return 0;
     const v = layer.meter.getValue();
     return this._clamp01(v);
-  }
+  };
 
-  getOrbitLevel(orbitId) {
-    const orbit = this.orbits[orbitId];
+  getOrbitLevel = (orbitId) => {
+    const orbit = this.orbits?.[orbitId];
     if (!orbit || !orbit.meter) return 0;
     const v = orbit.meter.getValue();
     return this._clamp01(v);
-  }
+  };
+
+  /**
+   * Master spectrum for MasterSpectrum.jsx
+   * Returns an array of floats ~0..1
+   */
+  getMasterSpectrum = () => {
+    if (!this.masterAnalyser) return null;
+
+    const values = this.masterAnalyser.getValue(); // fft array (dB-ish)
+    if (!values || !values.length) return null;
+
+    // Tone FFT values are typically negative dB numbers.
+    // Normalize roughly: -100dB -> 0, -20dB -> 1
+    return Array.from(values, (v) => {
+      const db = typeof v === "number" && Number.isFinite(v) ? v : -100;
+      return this._clamp01((db + 100) / 80);
+    });
+  };
 
   // ---------- INTERNAL ----------
 
   _clamp01(v) {
-    if (Number.isNaN(v)) return 0;
-    if (v < 0) return 0;
-    if (v > 1) return 1;
-    return v;
+    const n = Number(v);
+    if (!Number.isFinite(n)) return 0;
+    if (n < 0) return 0;
+    if (n > 1) return 1;
+    return n;
   }
 
   _buildGraph() {
     // MASTER BUS
     this.masterGain = new Tone.Gain(0.9).toDestination();
+
+    // Level meter
     this.masterMeter = makeMeter();
     this.masterGain.connect(this.masterMeter);
+
+    // Spectrum analyser (FFT)
+    this.masterAnalyser = new Tone.Analyser("fft", 1024);
+    this.masterGain.connect(this.masterAnalyser);
 
     // CORE BUSS
     this.coreBuss = new Tone.Gain(1).connect(this.masterGain);
@@ -274,7 +301,8 @@ class OMSEEngine {
       baseGain: 0.8,
     });
 
-    this.core.layers.atmos = this._buildCoreLayer({
+    // IMPORTANT: key is "atmosphere" to match CoreMixer.jsx
+    this.core.layers.atmosphere = this._buildCoreLayer({
       type: "triangle",
       spread: 20,
       detune: 12, // gentle shimmer
@@ -332,24 +360,28 @@ class OMSEEngine {
       },
     });
 
-    // optional airy noise for atmos
+    // optional airy noise for atmosphere
     let outputNode = synth;
     if (airy) {
       const noise = new Tone.Noise("pink").start();
       const noiseFilter = new Tone.Filter(6000, "lowpass");
       const noiseGain = new Tone.Gain(0.15);
+
       noise.connect(noiseFilter);
       noiseFilter.connect(noiseGain);
 
       const merge = new Tone.Gain(1);
       synth.connect(merge);
       noiseGain.connect(merge);
+
       outputNode = merge;
     }
 
     const gain = new Tone.Gain(baseGain).connect(this.coreBuss);
+
     const meter = makeMeter();
     gain.connect(meter);
+
     outputNode.connect(gain);
 
     return {
@@ -372,8 +404,9 @@ class OMSEEngine {
       },
     });
 
-    const panner = new Tone.Panner(pan || 0);
+    const panner = new Tone.Panner(typeof pan === "number" ? pan : 0);
     const gain = new Tone.Gain(baseGain).connect(this.masterGain);
+
     const meter = makeMeter();
     gain.connect(meter);
 

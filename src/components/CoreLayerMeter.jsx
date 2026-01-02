@@ -15,8 +15,15 @@ export function CoreLayerMeter({ layerId, audioReady }) {
     let frameId;
 
     const loop = () => {
-      const v = omseEngine.getCoreLayerLevel(layerId); // 0–1
-      setLevel(v);
+      const fn = omseEngine?.getCoreLayerLevel;
+      const vRaw = typeof fn === "function" ? fn(layerId) : 0;
+
+      const v =
+        typeof vRaw === "number" && Number.isFinite(vRaw) ? vRaw : 0;
+
+      // clamp 0..1 so CSS never gets NaN / weird transforms
+      setLevel(Math.max(0, Math.min(1, v)));
+
       frameId = requestAnimationFrame(loop);
     };
 
