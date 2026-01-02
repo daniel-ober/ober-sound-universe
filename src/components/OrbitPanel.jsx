@@ -1,27 +1,48 @@
 // src/components/OrbitPanel.jsx
 import "./OrbitPanel.css";
-import { OrbitMeter } from "./OrbitMeter";
 
-const ORBIT_META = [
+const TIME_SIG_OPTIONS = ["4/4", "5/4", "6/4", "7/4", "9/8", "11/8"];
+
+const ARP_OPTIONS = [
+  { id: "off", label: "Off" },
+  { id: "pulse", label: "Pulse" },
+  { id: "steps", label: "Steps" },
+  { id: "glass", label: "Glass" },
+  { id: "shimmer", label: "Shimmer" },
+  { id: "drone", label: "Drone" },
+];
+
+const ORBITS_META = [
   {
     id: "orbitA",
     label: "ORBIT A",
     subtitle: "First orbiting voice.",
-    themeClass: "orbit-card--a",
+    badgeClass: "orbit-badge--a",
   },
   {
     id: "orbitB",
     label: "ORBIT B",
     subtitle: "Second orbiting voice.",
-    themeClass: "orbit-card--b",
+    badgeClass: "orbit-badge--b",
   },
   {
     id: "orbitC",
     label: "ORBIT C",
     subtitle: "Third orbiting voice.",
-    themeClass: "orbit-card--c",
+    badgeClass: "orbit-badge--c",
   },
 ];
+
+// Helper: safe access + defaults (so your current data shape won’t break)
+function getOrbitState(orbitLayers, orbitId) {
+  const base = orbitLayers?.[orbitId] || {};
+  return {
+    gain: typeof base.gain === "number" ? base.gain : 0,
+    muted: !!base.muted,
+    timeSig: base.timeSig || "4/4",
+    arp: base.arp || "off",
+  };
+}
 
 export function OrbitPanel({
   audioReady,
@@ -30,108 +51,221 @@ export function OrbitPanel({
   onOrbitGainChange,
   onOrbitMuteToggle,
   onOrbitPatternToggle,
+
+  // Optional (wire later)
+  onOrbitTimeSigChange,
+  onOrbitArpChange,
+
+  // Optional (wire later)
+  orbitGroupMode,
+  onOrbitGroupModeChange,
 }) {
+  const orbitStatusText = audioReady ? "READY" : "NOT INITIALIZED";
+
   return (
     <section className="orbits-column">
-      <header className="orbits-header">
-        <div>
-          <h2 className="section-title">ORBIT VOICES</h2>
-          <p className="section-subtitle">
+      {/* Header band (matches Core panel vibe) */}
+      <div className="orbits-header">
+        <div className="orbits-header-left">
+          <h3 className="orbits-title">ORBIT VOICES</h3>
+          <p className="orbits-subtitle">
             Three complementary engines that dance around the Core scene with
             polyrhythmic motion.
           </p>
         </div>
 
-        <p className="status-line">
-          <span className="status-label">Orbit status:</span>{" "}
-          <span className={audioReady ? "status-ok" : "status-bad"}>
-            {audioReady ? "READY" : "NOT INITIALIZED"}
-          </span>
-        </p>
-      </header>
+        <div className="orbits-header-right">
+          <div className="orbits-status">
+            <span className="orbits-status-label">ORBIT STATUS:</span>
+            <span className={audioReady ? "orbits-status-ok" : "orbits-status-bad"}>
+              {orbitStatusText}
+            </span>
+          </div>
+        </div>
+      </div>
 
-      <div className="orbit-cards">
-        {ORBIT_META.map(({ id, label, subtitle, themeClass }) => {
-          const layerState = orbitLayers?.[id] || { gain: 0, muted: false };
-          const percent = Math.round(layerState.gain ?? 0);
-          const patternOn = !!orbitPatterns?.[id];
+      {/* 2-column layout: LEFT rack, RIGHT mixer */}
+      <div className="orbits-body">
+        {/* LEFT: Orbit group preset / pattern list module */}
+        <aside className="orbits-left">
+          <div className="orbits-rack">
+            <div className="orbits-rack-bar">
+              <span className="orbits-rack-title">ORBIT GROUP PRESET</span>
+              <span className="orbits-rack-chip">UAS</span>
+            </div>
 
-          return (
-            <article key={id} className={`orbit-card ${themeClass}`}>
-              {/* TOP: Orb avatar + text */}
-              <div className="orbit-card-top">
-                <div className="orbit-orb-shell">
-                  <div className="orbit-orb-backdrop" />
-                  <div className="orbit-orb-core">
-                    <OrbitMeter orbitId={id} audioReady={audioReady} />
+            <div className="orbits-rack-row">
+              <select
+                className="orbits-select"
+                value={orbitGroupMode || "tight"}
+                onChange={(e) => onOrbitGroupModeChange?.(e.target.value)}
+                disabled={!audioReady || !onOrbitGroupModeChange}
+                title={
+                  onOrbitGroupModeChange
+                    ? "Select orbit group preset"
+                    : "UI ready (wire group mode later)"
+                }
+              >
+                <option value="tight">Tight</option>
+                <option value="breathing">Breathing</option>
+              </select>
+
+              <div className="orbits-rack-hint">
+                <span className="orbits-rack-hint-dot" />
+                <span>
+                  {onOrbitGroupModeChange
+                    ? "Group preset wired"
+                    : "UI ready (wire group mode later)"}
+                </span>
+              </div>
+            </div>
+
+            <div className="orbits-rack-divider" />
+
+            {/* Pattern list rows (static for now — we’ll wire later) */}
+            <div className="orbits-pattern-list">
+              <button className="orbits-pattern-row" type="button" disabled={!audioReady}>
+                <span className="orbits-pattern-sig">6/4</span>
+                <span className="orbits-pattern-name">Twilight Chime</span>
+                <span className="orbits-pattern-btn">›</span>
+              </button>
+
+              <button className="orbits-pattern-row" type="button" disabled={!audioReady}>
+                <span className="orbits-pattern-sig">5/4</span>
+                <span className="orbits-pattern-name">Glass Pulse</span>
+                <span className="orbits-pattern-btn">›</span>
+              </button>
+
+              <button className="orbits-pattern-row" type="button" disabled={!audioReady}>
+                <span className="orbits-pattern-sig">7/4</span>
+                <span className="orbits-pattern-name">Shimmer Drone</span>
+                <span className="orbits-pattern-btn">›</span>
+              </button>
+            </div>
+
+            {/* Little “orbs” row (visual only for now) */}
+            <div className="orbits-orb-row">
+              <div className="orbits-orb" aria-hidden="true" />
+              <div className="orbits-orb" aria-hidden="true" />
+              <div className="orbits-orb" aria-hidden="true" />
+            </div>
+          </div>
+        </aside>
+
+        {/* RIGHT: Orbit A/B/C mixer stack */}
+        <div className="orbits-right">
+          <div className="orbits-mixer-head">
+            <span className="orbits-mixer-title">ORBIT MIXER</span>
+            <span className="orbits-mixer-sub">A / B / C</span>
+          </div>
+
+          <div className="orbits-mixer-stack">
+            {ORBITS_META.map(({ id, label, subtitle, badgeClass }) => {
+              const state = getOrbitState(orbitLayers, id);
+              const percent = Math.round(state.gain ?? 0);
+              const patternOn = !!orbitPatterns?.[id];
+
+              return (
+                <article key={id} className="orbit-strip">
+                  <div className="orbit-strip-sheen" />
+
+                  <div className="orbit-strip-top">
+                    <div className={`orbit-badge ${badgeClass}`} />
+
+                    <div className="orbit-strip-meta">
+                      <div className="orbit-strip-name">{label}</div>
+                      <div className="orbit-strip-desc">{subtitle}</div>
+                      <div className="orbit-strip-status">
+                        <span>STATUS</span>{" "}
+                        <b>{audioReady ? "ENGINE ACTIVE" : "PLACEHOLDER ENGINE"}</b>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      className={"orbit-pill" + (patternOn ? " orbit-pill--on" : " orbit-pill--off")}
+                      disabled={!audioReady}
+                      onClick={() => onOrbitPatternToggle?.(id)}
+                      title={audioReady ? "Toggle pattern" : "Initialize audio first"}
+                    >
+                      {patternOn ? "PATTERN: ON" : "PATTERN: OFF"}
+                    </button>
                   </div>
-                </div>
 
-                <div className="orbit-card-text">
-                  <span className="orbit-card-label">{label}</span>
-                  <span className="orbit-card-subtitle">{subtitle}</span>
-                  <div className="orbit-card-status-line">
-                    <span className="orbit-card-status-label">Status</span>
-                    <span className="orbit-card-status-value">
-                      {audioReady ? "Engine active" : "Placeholder engine"}
-                    </span>
+                  <div className="orbit-strip-mid">
+                    <div className="orbit-mini-field">
+                      <span>TIME SIG</span>
+                      <select
+                        className="orbits-select orbits-select--micro"
+                        value={state.timeSig}
+                        disabled={!audioReady || !onOrbitTimeSigChange}
+                        onChange={(e) => onOrbitTimeSigChange?.(id, e.target.value)}
+                        title={
+                          onOrbitTimeSigChange
+                            ? "Set time signature"
+                            : "UI ready (wire time signature later)"
+                        }
+                      >
+                        {TIME_SIG_OPTIONS.map((t) => (
+                          <option key={t} value={t}>
+                            {t}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="orbit-mini-field">
+                      <span>ARP / PATTERN</span>
+                      <select
+                        className="orbits-select orbits-select--micro"
+                        value={state.arp}
+                        disabled={!audioReady || !onOrbitArpChange}
+                        onChange={(e) => onOrbitArpChange?.(id, e.target.value)}
+                        title={onOrbitArpChange ? "Set arp/pattern" : "UI ready (wire arp later)"}
+                      >
+                        {ARP_OPTIONS.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="orbit-mini-meter" title="Signal (visual placeholder)">
+                      <div
+                        className="orbit-mini-meter-fill"
+                        style={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
+                      />
+                    </div>
+
+                    <div className="orbit-gain-readout">{percent}%</div>
                   </div>
-                </div>
-              </div>
 
-              {/* MIDDLE: Pattern toggle */}
-              <div className="orbit-card-row">
-                <div className="orbit-card-row-left">
-                  <span className="orbit-row-label">Pattern</span>
-                </div>
-                <div className="orbit-card-row-right">
-                  <button
-                    type="button"
-                    disabled={!audioReady}
-                    className={
-                      "orbit-pill-button" + (patternOn ? " orbit-pill--on" : "")
-                    }
-                    onClick={() => onOrbitPatternToggle(id)}
-                  >
-                    {patternOn ? "On" : "Off"}
-                  </button>
-                </div>
-              </div>
+                  <div className="orbit-strip-bottom">
+                    <input
+                      className="orbit-slider"
+                      type="range"
+                      min={0}
+                      max={100}
+                      value={percent}
+                      disabled={!audioReady}
+                      onChange={(e) => onOrbitGainChange?.(id, Number(e.target.value))}
+                    />
 
-              {/* BOTTOM: Fader + mute */}
-              <div className="orbit-card-controls">
-                <div className="orbit-fader-shell">
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    value={percent}
-                    disabled={!audioReady}
-                    onChange={(e) =>
-                      onOrbitGainChange(id, Number(e.target.value))
-                    }
-                    className="orbit-fader"
-                    orient="vertical"
-                  />
-                  <span className="orbit-fader-percent">{percent}%</span>
-                </div>
-
-                <button
-                  type="button"
-                  disabled={!audioReady}
-                  onClick={() => onOrbitMuteToggle(id)}
-                  className={
-                    layerState.muted
-                      ? "orbit-mute orbit-mute--active"
-                      : "orbit-mute"
-                  }
-                >
-                  {layerState.muted ? "Muted" : "Mute"}
-                </button>
-              </div>
-            </article>
-          );
-        })}
+                    <button
+                      type="button"
+                      className={"orbit-mute" + (state.muted ? " orbit-mute--active" : "")}
+                      disabled={!audioReady}
+                      onClick={() => onOrbitMuteToggle?.(id)}
+                    >
+                      {state.muted ? "Muted" : "Mute"}
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </div>
       </div>
     </section>
   );
