@@ -1,18 +1,30 @@
 // src/components/UniverseLayout.jsx
 import { CoreMixer } from "./CoreMixer";
-import { OrbitPanel } from "./OrbitPanel"; // 👈 singular
+import { OrbitPanel } from "./OrbitPanel";
 
 export function UniverseLayout({
   audioReady,
   coreLayers,
   orbitLayers,
   orbitPatterns,
+
+  orbitSceneId,
+  orbitSceneOptions,
+  onOrbitSceneChange,
+
   onLayerGainChange,
   onLayerMuteToggle,
+
   onOrbitGainChange,
   onOrbitMuteToggle,
   onOrbitPatternToggle,
-  bannerUrl,         // 👈 NEW: master preset banner
+  onOrbitPanChange,
+
+  onOrbitTimeSigChange,
+  onOrbitArpChange,
+  onOrbitEnabledChange,
+
+  bannerUrl,
 }) {
   return (
     <section className="instrument-row-main">
@@ -50,14 +62,21 @@ export function UniverseLayout({
             />
           </section>
 
-          {/* RIGHT: Orbit voices */}
+          {/* RIGHT: Orbits */}
           <OrbitPanel
             audioReady={audioReady}
             orbitLayers={orbitLayers}
             orbitPatterns={orbitPatterns}
+            orbitSceneId={orbitSceneId}
+            orbitSceneOptions={orbitSceneOptions}
+            onOrbitSceneChange={onOrbitSceneChange}
             onOrbitGainChange={onOrbitGainChange}
             onOrbitMuteToggle={onOrbitMuteToggle}
             onOrbitPatternToggle={onOrbitPatternToggle}
+            onOrbitPanChange={onOrbitPanChange}
+            onOrbitTimeSigChange={onOrbitTimeSigChange}
+            onOrbitArpChange={onOrbitArpChange}
+            onOrbitEnabledChange={onOrbitEnabledChange}
           />
         </div>
       </main>
