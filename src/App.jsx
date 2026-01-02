@@ -9,6 +9,8 @@ import { UniverseLayout } from "./components/UniverseLayout";
 import { MASTER_PRESETS } from "./presets/masterPresets";
 import "./App.css";
 
+const galaxy0 = MASTER_PRESETS.galaxy0;
+
 const KEY_TO_NOTE = {
   a: "C4",
   s: "D4",
@@ -20,20 +22,42 @@ const KEY_TO_NOTE = {
   k: "C5",
 };
 
-const galaxy0 = MASTER_PRESETS.galaxy0;
-const DEFAULT_PRESET_ID = galaxy0.defaultPresetId;
-const DEFAULT_PRESET = galaxy0.presets[DEFAULT_PRESET_ID];
-
 function App() {
   const [audioReady, setAudioReady] = useState(false);
   const [isPlayingDemo, setIsPlayingDemo] = useState(false);
 
-  // use canonical master presets
-  const [activePresetId, setActivePresetId] = useState(DEFAULT_PRESET_ID);
-  const [coreLayers, setCoreLayers] = useState(DEFAULT_PRESET.core);
-  const [orbitLayers, setOrbitLayers] = useState(DEFAULT_PRESET.orbits);
+  // active master preset id (presetA … presetE)
+  const [activePreset, setActivePreset] = useState(
+    galaxy0.defaultPresetId ?? "presetA"
+  );
+
+  // grab the active preset config from MASTER_PRESETS
+  const activePresetConfig = galaxy0.presets[activePreset];
+  const bannerUrl = activePresetConfig?.banner ?? null;
+
+  // core / orbit / pattern state (initialized from active preset)
+  const [coreLayers, setCoreLayers] = useState(
+    activePresetConfig?.core ?? {
+      ground: { gain: 0, muted: false },
+      harmony: { gain: 0, muted: false },
+      atmos: { gain: 0, muted: false },
+    }
+  );
+
+  const [orbitLayers, setOrbitLayers] = useState(
+    activePresetConfig?.orbits ?? {
+      orbitA: { gain: 0, muted: false },
+      orbitB: { gain: 0, muted: false },
+      orbitC: { gain: 0, muted: false },
+    }
+  );
+
   const [orbitPatterns, setOrbitPatterns] = useState(
-    DEFAULT_PRESET.orbitPatterns
+    activePresetConfig?.orbitPatterns ?? {
+      orbitA: false,
+      orbitB: false,
+      orbitC: false,
+    }
   );
 
   // -------------------------------
@@ -106,9 +130,12 @@ function App() {
     await omseEngine.startAudioContext();
     setAudioReady(true);
 
-    const preset = galaxy0.presets[activePresetId];
-    if (preset) {
-      syncToEngine(preset.core, preset.orbits, preset.orbitPatterns);
+    if (activePresetConfig) {
+      syncToEngine(
+        activePresetConfig.core,
+        activePresetConfig.orbits,
+        activePresetConfig.orbitPatterns
+      );
     }
   };
 
@@ -123,10 +150,11 @@ function App() {
     const preset = galaxy0.presets[presetId];
     if (!preset) return;
 
-    setActivePresetId(presetId);
+    setActivePreset(presetId);
     setCoreLayers(preset.core);
     setOrbitLayers(preset.orbits);
     setOrbitPatterns(preset.orbitPatterns);
+
     syncToEngine(preset.core, preset.orbits, preset.orbitPatterns);
   };
 
@@ -210,7 +238,7 @@ function App() {
               />
 
               <GalaxyPresetBar
-                activePreset={activePresetId}
+                activePreset={activePreset}
                 onSelectPreset={handleApplyPreset}
               />
             </div>
@@ -239,7 +267,7 @@ function App() {
               onOrbitGainChange={handleOrbitGainChange}
               onOrbitMuteToggle={handleOrbitMuteToggle}
               onOrbitPatternToggle={handleOrbitPatternToggle}
-              activePresetId={activePresetId}
+              bannerUrl={bannerUrl}      // 👈 send master preset banner down
             />
 
             {/* BOTTOM: future mixer / transport row */}
