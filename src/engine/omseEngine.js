@@ -230,27 +230,38 @@ class OMSEEngine {
     layer.gain.gain.value = layer.muted ? 0 : layer.baseGain;
   }
 
-  // ----- Orbit controls -----
+  // ----- Orbit controls (continuous-safe) -----
 
   setOrbitGain(orbitId, normalized) {
     const orbit = this.orbits[orbitId];
     if (!orbit) return;
     const v = clamp01(normalized);
     orbit.baseGain = v;
-    orbit.gain.gain.value = orbit.muted ? 0 : v;
+
+    // smooth to avoid clicks + avoid perceived "reset"
+    if (orbit.gain?.gain?.rampTo) orbit.gain.gain.rampTo(orbit.muted ? 0 : v, 0.03);
+    else orbit.gain.gain.value = orbit.muted ? 0 : v;
   }
 
   setOrbitMute(orbitId, muted) {
     const orbit = this.orbits[orbitId];
     if (!orbit) return;
     orbit.muted = !!muted;
-    orbit.gain.gain.value = orbit.muted ? 0 : orbit.baseGain;
+
+    const target = orbit.muted ? 0 : orbit.baseGain;
+    if (orbit.gain?.gain?.rampTo) orbit.gain.gain.rampTo(target, 0.03);
+    else orbit.gain.gain.value = target;
   }
 
   setOrbitPan(orbitId, pan) {
     const orbit = this.orbits[orbitId];
-    if (!orbit) return;
-    orbit.panner.pan.value = clamp(pan, -1, 1);
+    if (!orbit?.panner?.pan) return;
+
+    const v = clamp(pan, -1, 1);
+
+    // smooth pan to avoid stepping
+    if (orbit.panner.pan.rampTo) orbit.panner.pan.rampTo(v, 0.03);
+    else orbit.panner.pan.value = v;
   }
 
   setOrbitEnabled(orbitId, enabled) {
@@ -261,22 +272,29 @@ class OMSEEngine {
 
     // If disabling, stop pattern and silence orbit
     if (!enabled) {
-      this.stopOrbitPattern(orbitId);
+      this.setOrbitPatternState(orbitId, false);
       const orbit = this.orbits[orbitId];
-      if (orbit) orbit.gain.gain.value = 0;
+      if (orbit) {
+        if (orbit.gain?.gain?.rampTo) orbit.gain.gain.rampTo(0, 0.03);
+        else orbit.gain.gain.value = 0;
+      }
       return;
     }
 
     // If enabling, restore gain according to mute/baseGain
     const orbit = this.orbits[orbitId];
-    if (orbit) orbit.gain.gain.value = orbit.muted ? 0 : orbit.baseGain;
+    if (orbit) {
+      const target = orbit.muted ? 0 : orbit.baseGain;
+      if (orbit.gain?.gain?.rampTo) orbit.gain.gain.rampTo(target, 0.03);
+      else orbit.gain.gain.value = target;
+    }
   }
 
   setOrbitTimeSig(orbitId, timeSig) {
     this.orbitMotion[orbitId] = {
       ...(this.orbitMotion[orbitId] || {}),
       timeSig: timeSig || "4/4",
-      step: 0,
+      step: 0, // reset step is OK and should NOT restart loop
     };
   }
 
@@ -284,7 +302,7 @@ class OMSEEngine {
     this.orbitMotion[orbitId] = {
       ...(this.orbitMotion[orbitId] || {}),
       arp: arp || "off",
-      step: 0,
+      step: 0, // reset step is OK and should NOT restart loop
     };
   }
 
@@ -297,6 +315,26 @@ class OMSEEngine {
     // update loop interval live (no rebuild)
     const loop = this.orbitPatterns[orbitId];
     if (loop) loop.interval = rate || "8n";
+  }
+
+  /**
+   * ✅ Only start/stop patterns through this.
+   * This prevents re-phasing when you tweak mix params.
+   */
+  setOrbitPatternState(orbitId, isOn) {
+    if (!this.initialized) return;
+
+    const enabled = !!this.orbitConfig?.[orbitId]?.enabled;
+    const loop = this.orbitPatterns[orbitId];
+    if (!loop) return;
+
+    const shouldStart = !!isOn && enabled;
+
+    if (shouldStart) {
+      if (loop.state !== "started") loop.start(0);
+    } else {
+      if (loop.state === "started") loop.stop();
+    }
   }
 
   /**
@@ -345,28 +383,17 @@ class OMSEEngine {
 
       orbit.synth = synth;
     } catch (e) {
-      // If anything goes wrong, keep orbit alive (don’t crash UI)
       // eslint-disable-next-line no-console
       console.warn("setOrbitVoicePreset failed:", e);
     }
   }
 
+  // Back-compat wrappers (no longer used by App for toggling)
   startOrbitPattern(orbitId) {
-    if (!this.initialized) return;
-
-    const enabled = !!this.orbitConfig?.[orbitId]?.enabled;
-    if (!enabled) return;
-
-    const loop = this.orbitPatterns[orbitId];
-    if (!loop) return;
-
-    if (!loop.state || loop.state === "stopped") loop.start(0);
+    this.setOrbitPatternState(orbitId, true);
   }
-
   stopOrbitPattern(orbitId) {
-    const loop = this.orbitPatterns[orbitId];
-    if (!loop) return;
-    if (loop.state === "started") loop.stop();
+    this.setOrbitPatternState(orbitId, false);
   }
 
   // ----- Meter getters (0–1) -----
@@ -418,17 +445,21 @@ class OMSEEngine {
   applyOrbitScenePreset(scene, voicePresetMap) {
     if (!this.initialized || !scene?.orbits) return;
 
-    (["orbitA", "orbitB", "orbitC"] || []).forEach((orbitId) => {
+    ["orbitA", "orbitB", "orbitC"].forEach((orbitId) => {
       const cfg = scene.orbits?.[orbitId];
       if (!cfg) return;
 
       // enabled
       this.setOrbitEnabled(orbitId, !!cfg.enabled);
 
-      // voice preset
+      // voice preset id
       const voiceId = cfg.voicePresetId || null;
-      this.orbitConfig[orbitId] = { ...(this.orbitConfig[orbitId] || {}), voicePresetId: voiceId };
+      this.orbitConfig[orbitId] = {
+        ...(this.orbitConfig[orbitId] || {}),
+        voicePresetId: voiceId,
+      };
 
+      // swap synth if preset exists
       const voicePreset = voiceId ? voicePresetMap?.[voiceId] : null;
       if (voicePreset) this.setOrbitVoicePreset(orbitId, voicePreset);
 
@@ -444,10 +475,8 @@ class OMSEEngine {
       this.setOrbitArp(orbitId, motion.arp || "off");
       this.setOrbitRate(orbitId, motion.rate || "8n");
 
-      // pattern on/off
-      const on = !!motion.patternOn;
-      if (on) this.startOrbitPattern(orbitId);
-      else this.stopOrbitPattern(orbitId);
+      // pattern on/off (ONLY here or via UI toggle)
+      this.setOrbitPatternState(orbitId, !!motion.patternOn);
     });
   }
 
@@ -494,9 +523,21 @@ class OMSEEngine {
     });
 
     // ORBITS (voice synth will be swapped by applyOrbitScenePreset)
-    this.orbits.orbitA = this._buildOrbitVoice({ type: "square", pan: -0.25, baseGain: 0.7 });
-    this.orbits.orbitB = this._buildOrbitVoice({ type: "sawtooth", pan: 0.25, baseGain: 0.7 });
-    this.orbits.orbitC = this._buildOrbitVoice({ type: "triangle", pan: 0, baseGain: 0.65 });
+    this.orbits.orbitA = this._buildOrbitVoice({
+      type: "square",
+      pan: -0.25,
+      baseGain: 0.7,
+    });
+    this.orbits.orbitB = this._buildOrbitVoice({
+      type: "sawtooth",
+      pan: 0.25,
+      baseGain: 0.7,
+    });
+    this.orbits.orbitC = this._buildOrbitVoice({
+      type: "triangle",
+      pan: 0,
+      baseGain: 0.65,
+    });
 
     // Orbit pattern loops: ARP + polyrhythm aware
     this.orbitPatterns.orbitA = this._makeOrbitArpLoop("orbitA");
@@ -580,8 +621,7 @@ class OMSEEngine {
 
       // chord source: held core notes, sorted low->high
       const chord = Array.from(this.activeNotes.core || []);
-      const notes =
-        chord.length > 0 ? chord : ["C4", "E4", "G4", "B4"];
+      const notes = chord.length > 0 ? chord : ["C4", "E4", "G4", "B4"];
 
       // stable ordering
       const sorted = notes
@@ -600,39 +640,37 @@ class OMSEEngine {
           pick = idxBase % sorted.length;
           break;
         case "down":
-          pick = (sorted.length - 1 - (idxBase % sorted.length));
+          pick = sorted.length - 1 - (idxBase % sorted.length);
           break;
         case "upDown": {
           const cycle = sorted.length * 2 - 2;
-          const i = cycle > 0 ? (idxBase % cycle) : 0;
+          const i = cycle > 0 ? idxBase % cycle : 0;
           pick = i < sorted.length ? i : cycle - i;
           break;
         }
         case "downUp": {
           const cycle = sorted.length * 2 - 2;
-          const i = cycle > 0 ? (idxBase % cycle) : 0;
+          const i = cycle > 0 ? idxBase % cycle : 0;
           const upDown = i < sorted.length ? i : cycle - i;
-          pick = (sorted.length - 1) - upDown;
+          pick = sorted.length - 1 - upDown;
           break;
         }
         case "random":
           pick = Math.floor(Math.random() * sorted.length);
           break;
-        default:
-          // "pulse", "steps", "glass", "shimmer", "drone" (UI labels)
-          // Treat as "upDown" for now so it behaves musically.
-          {
-            const cycle = sorted.length * 2 - 2;
-            const i = cycle > 0 ? (idxBase % cycle) : 0;
-            pick = i < sorted.length ? i : cycle - i;
-          }
+        default: {
+          // Treat custom UI flavors as upDown until we implement them
+          const cycle = sorted.length * 2 - 2;
+          const i = cycle > 0 ? idxBase % cycle : 0;
+          pick = i < sorted.length ? i : cycle - i;
           break;
+        }
       }
 
       const note = sorted[pick] || sorted[0];
       orbit.synth.triggerAttackRelease(note, "16n", time);
 
-      // advance step
+      // advance step (no loop restart; just changes which note is chosen)
       this.orbitMotion[orbitId] = {
         ...motion,
         step: (step + 1) % Math.max(1, steps),

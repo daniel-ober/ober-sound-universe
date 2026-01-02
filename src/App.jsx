@@ -34,9 +34,36 @@ function getOrbitSceneById(id) {
  */
 function sceneToOrbitState(scene) {
   const fallback = {
-    orbitA: { gain: 0, pan: 0, muted: false, timeSig: "4/4", arp: "off", rate: "8n", enabled: true },
-    orbitB: { gain: 0, pan: 0, muted: false, timeSig: "4/4", arp: "off", rate: "8n", enabled: true },
-    orbitC: { gain: 0, pan: 0, muted: false, timeSig: "4/4", arp: "off", rate: "8n", enabled: true },
+    orbitA: {
+      gain: 0,
+      pan: 0,
+      muted: false,
+      timeSig: "4/4",
+      arp: "off",
+      rate: "8n",
+      enabled: true,
+      voicePresetId: null,
+    },
+    orbitB: {
+      gain: 0,
+      pan: 0,
+      muted: false,
+      timeSig: "4/4",
+      arp: "off",
+      rate: "8n",
+      enabled: true,
+      voicePresetId: null,
+    },
+    orbitC: {
+      gain: 0,
+      pan: 0,
+      muted: false,
+      timeSig: "4/4",
+      arp: "off",
+      rate: "8n",
+      enabled: true,
+      voicePresetId: null,
+    },
   };
 
   if (!scene?.orbits) {
@@ -49,7 +76,7 @@ function sceneToOrbitState(scene) {
   const orbitLayers = {};
   const orbitPatterns = {};
 
-  (["orbitA", "orbitB", "orbitC"] || []).forEach((id) => {
+  ["orbitA", "orbitB", "orbitC"].forEach((id) => {
     const cfg = scene.orbits?.[id];
 
     if (!cfg) {
@@ -96,7 +123,10 @@ function App() {
   const [isPlayingDemo, setIsPlayingDemo] = useState(false);
 
   // active master preset id (presetA … presetE)
-  const [activePreset, setActivePreset] = useState(galaxy0.defaultPresetId ?? "presetA");
+  const [activePreset, setActivePreset] = useState(
+    galaxy0.defaultPresetId ?? "presetA"
+  );
+
   const activePresetConfig = galaxy0.presets[activePreset];
   const bannerUrl = activePresetConfig?.banner ?? null;
 
@@ -126,7 +156,9 @@ function App() {
   const initialOrbitState = sceneToOrbitState(initialScene);
 
   const [orbitLayers, setOrbitLayers] = useState(initialOrbitState.orbitLayers);
-  const [orbitPatterns, setOrbitPatterns] = useState(initialOrbitState.orbitPatterns);
+  const [orbitPatterns, setOrbitPatterns] = useState(
+    initialOrbitState.orbitPatterns
+  );
 
   // -------------------------------
   // Keyboard → Core voice
@@ -164,35 +196,36 @@ function App() {
   }, [audioReady]);
 
   // -------------------------------
-  // Sync UI state → engine
+  // Continuous-safe engine application helpers
+  // (DO NOT touch pattern scheduling here)
   // -------------------------------
-  const syncToEngine = (coreState, orbitState, patternState) => {
+  const applyCoreLayerToEngine = (layerId, layer) => {
+    if (!audioReady) return;
+    omseEngine.setCoreLayerGain(layerId, (layer.gain ?? 0) / 100);
+    omseEngine.setCoreLayerMute(layerId, !!layer.muted);
+  };
+
+  const applyOrbitToEngine = (orbitId, layer) => {
     if (!audioReady) return;
 
-    // Core layers
-    Object.entries(coreState).forEach(([layerId, layer]) => {
-      omseEngine.setCoreLayerGain(layerId, (layer.gain ?? 0) / 100);
-      omseEngine.setCoreLayerMute(layerId, !!layer.muted);
-    });
+    omseEngine.setOrbitEnabled(orbitId, layer.enabled !== false);
+    omseEngine.setOrbitGain(orbitId, (layer.gain ?? 0) / 100);
+    omseEngine.setOrbitMute(orbitId, !!layer.muted);
+    omseEngine.setOrbitPan(orbitId, layer.pan ?? 0);
 
-    // Orbits: mix + motion + enable
-    Object.entries(orbitState).forEach(([orbitId, layer]) => {
-      omseEngine.setOrbitEnabled(orbitId, layer.enabled !== false);
-      omseEngine.setOrbitGain(orbitId, (layer.gain ?? 0) / 100);
-      omseEngine.setOrbitMute(orbitId, !!layer.muted);
-      omseEngine.setOrbitPan(orbitId, layer.pan ?? 0);
-
-      omseEngine.setOrbitTimeSig(orbitId, layer.timeSig || "4/4");
-      omseEngine.setOrbitArp(orbitId, layer.arp || "off");
-      omseEngine.setOrbitRate(orbitId, layer.rate || "8n");
-    });
-
-    // Orbit patterns
-    Object.entries(patternState).forEach(([orbitId, isOn]) => {
-      if (isOn) omseEngine.startOrbitPattern(orbitId);
-      else omseEngine.stopOrbitPattern(orbitId);
-    });
+    // motion params update live; loop keeps running
+    omseEngine.setOrbitTimeSig(orbitId, layer.timeSig || "4/4");
+    omseEngine.setOrbitArp(orbitId, layer.arp || "off");
+    omseEngine.setOrbitRate(orbitId, layer.rate || "8n");
   };
+
+  // ✅ patterns ONLY: apply start/stop ONLY when orbitPatterns changes
+  useEffect(() => {
+    if (!audioReady) return;
+    Object.entries(orbitPatterns || {}).forEach(([orbitId, isOn]) => {
+      omseEngine.setOrbitPatternState(orbitId, !!isOn);
+    });
+  }, [audioReady, orbitPatterns]);
 
   // -------------------------------
   // Top-level controls
@@ -204,22 +237,32 @@ function App() {
     // Apply core
     const core = normalizeCore(activePresetConfig?.core);
     setCoreLayers(core);
+    Object.entries(core).forEach(([layerId, layer]) => {
+      applyCoreLayerToEngine(layerId, layer);
+    });
 
-    // Apply orbit scene
-    const scene = getOrbitSceneById(orbitSceneId) || getOrbitSceneById(initialOrbitSceneId);
+    // Apply orbit scene (engine + UI)
+    const scene =
+      getOrbitSceneById(orbitSceneId) || getOrbitSceneById(initialOrbitSceneId);
+
     if (scene) {
-      // drive engine (voice presets + mix + motion + patternOn)
+      // engine: set voice presets + mix + motion + patternOn
       omseEngine.applyOrbitScenePreset(scene, ORBIT_VOICE_PRESETS);
 
-      // sync UI state too
+      // UI: reflect scene
       const nextOrbitState = sceneToOrbitState(scene);
       setOrbitLayers(nextOrbitState.orbitLayers);
       setOrbitPatterns(nextOrbitState.orbitPatterns);
 
-      syncToEngine(core, nextOrbitState.orbitLayers, nextOrbitState.orbitPatterns);
+      // engine: ensure mix/motion reflects UI state immediately
+      Object.entries(nextOrbitState.orbitLayers).forEach(([orbitId, layer]) => {
+        applyOrbitToEngine(orbitId, layer);
+      });
     } else {
-      // still sync core as a minimum
-      syncToEngine(core, orbitLayers, orbitPatterns);
+      // fallback: apply current UI orbit state
+      Object.entries(orbitLayers).forEach(([orbitId, layer]) => {
+        applyOrbitToEngine(orbitId, layer);
+      });
     }
   };
 
@@ -241,7 +284,8 @@ function App() {
     setCoreLayers(nextCore);
 
     // orbit scene selection
-    const nextSceneId = preset.orbitSceneId || ORBIT_MASTER_PRESETS?.[0]?.id || "";
+    const nextSceneId =
+      preset.orbitSceneId || ORBIT_MASTER_PRESETS?.[0]?.id || "";
     setOrbitSceneId(nextSceneId);
 
     const scene = getOrbitSceneById(nextSceneId);
@@ -251,8 +295,18 @@ function App() {
     setOrbitPatterns(nextOrbitState.orbitPatterns);
 
     if (audioReady) {
+      // apply core
+      Object.entries(nextCore).forEach(([layerId, layer]) => {
+        applyCoreLayerToEngine(layerId, layer);
+      });
+
+      // apply orbit scene (voice swap + baseline)
       if (scene) omseEngine.applyOrbitScenePreset(scene, ORBIT_VOICE_PRESETS);
-      syncToEngine(nextCore, nextOrbitState.orbitLayers, nextOrbitState.orbitPatterns);
+
+      // apply orbit mix/motion live (patterns handled by effect)
+      Object.entries(nextOrbitState.orbitLayers).forEach(([orbitId, layer]) => {
+        applyOrbitToEngine(orbitId, layer);
+      });
     }
   };
 
@@ -268,103 +322,154 @@ function App() {
     setOrbitPatterns(nextOrbitState.orbitPatterns);
 
     if (audioReady && scene) {
+      // voice swap + baseline + patternOn (safe)
       omseEngine.applyOrbitScenePreset(scene, ORBIT_VOICE_PRESETS);
-      syncToEngine(coreLayers, nextOrbitState.orbitLayers, nextOrbitState.orbitPatterns);
+
+      // then apply mix/motion live (patterns handled by effect too)
+      Object.entries(nextOrbitState.orbitLayers).forEach(([orbitId, layer]) => {
+        applyOrbitToEngine(orbitId, layer);
+      });
     }
   };
 
   // -------------------------------
-  // Core mixer handlers
+  // Core mixer handlers (NO pattern touching)
   // -------------------------------
   const handleLayerGainChange = (layerId, newPercent) => {
     setCoreLayers((prev) => {
-      const next = {
-        ...prev,
-        [layerId]: { ...prev[layerId], gain: newPercent },
-      };
-      syncToEngine(next, orbitLayers, orbitPatterns);
+      const nextLayer = { ...(prev[layerId] || {}), gain: newPercent };
+      const next = { ...prev, [layerId]: nextLayer };
+      applyCoreLayerToEngine(layerId, nextLayer);
       return next;
     });
   };
 
   const handleLayerMuteToggle = (layerId) => {
     setCoreLayers((prev) => {
-      const current = prev[layerId];
-      const next = {
-        ...prev,
-        [layerId]: { ...current, muted: !current.muted },
-      };
-      syncToEngine(next, orbitLayers, orbitPatterns);
+      const cur = prev[layerId] || { gain: 0, muted: false };
+      const nextLayer = { ...cur, muted: !cur.muted };
+      const next = { ...prev, [layerId]: nextLayer };
+      applyCoreLayerToEngine(layerId, nextLayer);
       return next;
     });
   };
 
   // -------------------------------
-  // Orbit mixer handlers
+  // Orbit mixer handlers (NO pattern touching)
   // -------------------------------
   const handleOrbitGainChange = (orbitId, newPercent) => {
     setOrbitLayers((prev) => {
-      const next = {
-        ...prev,
-        [orbitId]: { ...prev[orbitId], gain: newPercent },
+      const cur = prev[orbitId] || {
+        gain: 0,
+        pan: 0,
+        muted: false,
+        timeSig: "4/4",
+        arp: "off",
+        rate: "8n",
+        enabled: true,
       };
-      syncToEngine(coreLayers, next, orbitPatterns);
+      const nextLayer = { ...cur, gain: newPercent };
+      const next = { ...prev, [orbitId]: nextLayer };
+      applyOrbitToEngine(orbitId, nextLayer);
       return next;
     });
   };
 
   const handleOrbitMuteToggle = (orbitId) => {
     setOrbitLayers((prev) => {
-      const current = prev[orbitId];
-      const next = {
-        ...prev,
-        [orbitId]: { ...current, muted: !current.muted },
+      const cur = prev[orbitId] || {
+        gain: 0,
+        pan: 0,
+        muted: false,
+        timeSig: "4/4",
+        arp: "off",
+        rate: "8n",
+        enabled: true,
       };
-      syncToEngine(coreLayers, next, orbitPatterns);
-      return next;
-    });
-  };
-
-  const handleOrbitPatternToggle = (orbitId) => {
-    if (!audioReady) return;
-
-    setOrbitPatterns((prev) => {
-      const next = { ...prev, [orbitId]: !prev[orbitId] };
-      syncToEngine(coreLayers, orbitLayers, next);
+      const nextLayer = { ...cur, muted: !cur.muted };
+      const next = { ...prev, [orbitId]: nextLayer };
+      applyOrbitToEngine(orbitId, nextLayer);
       return next;
     });
   };
 
   const handleOrbitPanChange = (orbitId, newPan) => {
     setOrbitLayers((prev) => {
-      const next = { ...prev, [orbitId]: { ...prev[orbitId], pan: newPan } };
-      syncToEngine(coreLayers, next, orbitPatterns);
+      const cur = prev[orbitId] || {
+        gain: 0,
+        pan: 0,
+        muted: false,
+        timeSig: "4/4",
+        arp: "off",
+        rate: "8n",
+        enabled: true,
+      };
+      const nextLayer = { ...cur, pan: newPan };
+      const next = { ...prev, [orbitId]: nextLayer };
+      applyOrbitToEngine(orbitId, nextLayer);
       return next;
     });
   };
 
   const handleOrbitTimeSigChange = (orbitId, nextSig) => {
     setOrbitLayers((prev) => {
-      const next = { ...prev, [orbitId]: { ...prev[orbitId], timeSig: nextSig } };
-      syncToEngine(coreLayers, next, orbitPatterns);
+      const cur = prev[orbitId] || {
+        gain: 0,
+        pan: 0,
+        muted: false,
+        timeSig: "4/4",
+        arp: "off",
+        rate: "8n",
+        enabled: true,
+      };
+      const nextLayer = { ...cur, timeSig: nextSig };
+      const next = { ...prev, [orbitId]: nextLayer };
+      applyOrbitToEngine(orbitId, nextLayer);
       return next;
     });
   };
 
   const handleOrbitArpChange = (orbitId, nextArp) => {
     setOrbitLayers((prev) => {
-      const next = { ...prev, [orbitId]: { ...prev[orbitId], arp: nextArp } };
-      syncToEngine(coreLayers, next, orbitPatterns);
+      const cur = prev[orbitId] || {
+        gain: 0,
+        pan: 0,
+        muted: false,
+        timeSig: "4/4",
+        arp: "off",
+        rate: "8n",
+        enabled: true,
+      };
+      const nextLayer = { ...cur, arp: nextArp };
+      const next = { ...prev, [orbitId]: nextLayer };
+      applyOrbitToEngine(orbitId, nextLayer);
       return next;
     });
   };
 
   const handleOrbitEnabledChange = (orbitId, enabled) => {
     setOrbitLayers((prev) => {
-      const next = { ...prev, [orbitId]: { ...prev[orbitId], enabled } };
-      syncToEngine(coreLayers, next, orbitPatterns);
+      const cur = prev[orbitId] || {
+        gain: 0,
+        pan: 0,
+        muted: false,
+        timeSig: "4/4",
+        arp: "off",
+        rate: "8n",
+        enabled: true,
+      };
+      const nextLayer = { ...cur, enabled };
+      const next = { ...prev, [orbitId]: nextLayer };
+      applyOrbitToEngine(orbitId, nextLayer);
       return next;
     });
+  };
+
+  // ✅ Pattern toggle ONLY changes state.
+  // The effect above starts/stops loops without re-syncing everything else.
+  const handleOrbitPatternToggle = (orbitId) => {
+    if (!audioReady) return;
+    setOrbitPatterns((prev) => ({ ...prev, [orbitId]: !prev?.[orbitId] }));
   };
 
   // -------------------------------
