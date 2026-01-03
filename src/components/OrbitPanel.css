@@ -512,6 +512,13 @@
   box-shadow: none;
 }
 
+.orbit-mini-hint {
+  margin-top: 6px;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  opacity: 0.78;
+}
+
 /* ======================
    Responsive
    ====================== */

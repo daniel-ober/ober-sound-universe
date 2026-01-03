@@ -3,7 +3,66 @@ import { useEffect, useMemo, useState } from "react";
 import "./OrbitPanel.css";
 import { OrbitMeter } from "./OrbitMeter";
 
-const TIME_SIG_OPTIONS = ["4/4", "5/4", "6/4", "7/4", "9/8", "11/8"];
+/**
+ * MUSICAL TIME SIG OPTIONS (Curated)
+ * ---------------------------------
+ * We treat numerator as "pulses per MASTER cycle" (engine timing),
+ * and denominator as a musical subdivision label (UI clarity).
+ *
+ * Goal: keep the options musically sensible and grouped:
+ * - Simple (quarter feel): 2/4, 3/4, 4/4, 5/4, 6/4, 7/4
+ * - Compound / Triplet feel (8th meters): 6/8, 9/8, 12/8
+ * - Odd / Asymmetric (8th meters): 5/8, 7/8, 11/8, 13/8
+ *
+ * If presets load a value not listed, we still support it as a "Custom" option.
+ */
+
+const SUBDIVISION_LABEL = {
+  2: "HALF NOTES",
+  4: "QUARTER NOTES",
+  8: "EIGHTH NOTES",
+  16: "SIXTEENTH NOTES",
+  32: "THIRTY-SECOND NOTES",
+};
+
+const TIME_SIG_GROUPS = [
+  {
+    label: "Simple (Quarter-note feel)",
+    options: ["2/4", "3/4", "4/4", "5/4", "6/4", "7/4"],
+  },
+  {
+    label: "Compound / Triplet feel (Eighth-note meters)",
+    options: ["6/8", "9/8", "12/8"],
+  },
+  {
+    label: "Odd / Asymmetric (Eighth-note meters)",
+    options: ["5/8", "7/8", "11/8", "13/8"],
+  },
+];
+
+function parseTimeSig(sig) {
+  if (typeof sig !== "string") return { steps: 4, denom: 4 };
+  const [a, b] = sig.split("/");
+  const steps = Number.parseInt(a, 10);
+  const denom = Number.parseInt(b, 10);
+  return {
+    steps: Number.isFinite(steps) ? steps : 4,
+    denom: Number.isFinite(denom) ? denom : 4,
+  };
+}
+
+function formatTimeSigLabel(sig) {
+  const { denom } = parseTimeSig(sig);
+  const denomLabel = SUBDIVISION_LABEL[denom] || `/${denom}`;
+  return `${sig} — ${denomLabel}`;
+}
+
+function isInCuratedList(sig) {
+  for (const g of TIME_SIG_GROUPS) {
+    if (g.options.includes(sig)) return true;
+  }
+  return false;
+}
 
 const ARP_OPTIONS = [
   { id: "off", label: "Off" },
@@ -61,6 +120,23 @@ function clamp(n, min, max) {
   return Math.max(min, Math.min(max, v));
 }
 
+/**
+ * Sync helper:
+ * - We want to adopt derived values (from Firestore/preset) when local state
+ *   is still at its “initial default”
+ * - But we do NOT want to stomp user changes after they’ve interacted.
+ */
+function syncIfStillDefault(prevVal, derivedVal, defaultVal) {
+  const hasDerived = typeof derivedVal === "string" && derivedVal.trim().length > 0;
+  if (!hasDerived) return prevVal;
+  return prevVal === defaultVal ? derivedVal : prevVal;
+}
+function syncBoolIfStillDefault(prevVal, derivedVal, defaultVal) {
+  const hasDerived = typeof derivedVal === "boolean";
+  if (!hasDerived) return prevVal;
+  return prevVal === defaultVal ? derivedVal : prevVal;
+}
+
 export function OrbitPanel({
   audioReady,
 
@@ -112,30 +188,26 @@ export function OrbitPanel({
     orbitC: true,
   });
 
-  // keep local planning state aligned with existing data (without blocking user changes)
+  // keep local planning state aligned with existing data (without stomping user changes)
   useEffect(() => {
     setLocalTimeSig((prev) => ({
-      orbitA: prev.orbitA ?? derived.orbitA.timeSig,
-      orbitB: prev.orbitB ?? derived.orbitB.timeSig,
-      orbitC: prev.orbitC ?? derived.orbitC.timeSig,
-      ...prev,
+      orbitA: syncIfStillDefault(prev.orbitA, derived.orbitA.timeSig, "4/4"),
+      orbitB: syncIfStillDefault(prev.orbitB, derived.orbitB.timeSig, "4/4"),
+      orbitC: syncIfStillDefault(prev.orbitC, derived.orbitC.timeSig, "4/4"),
     }));
 
     setLocalArp((prev) => ({
-      orbitA: prev.orbitA ?? derived.orbitA.arp,
-      orbitB: prev.orbitB ?? derived.orbitB.arp,
-      orbitC: prev.orbitC ?? derived.orbitC.arp,
-      ...prev,
+      orbitA: syncIfStillDefault(prev.orbitA, derived.orbitA.arp, "off"),
+      orbitB: syncIfStillDefault(prev.orbitB, derived.orbitB.arp, "off"),
+      orbitC: syncIfStillDefault(prev.orbitC, derived.orbitC.arp, "off"),
     }));
 
     setLocalEnabled((prev) => ({
-      orbitA: typeof prev.orbitA === "boolean" ? prev.orbitA : derived.orbitA.enabled,
-      orbitB: typeof prev.orbitB === "boolean" ? prev.orbitB : derived.orbitB.enabled,
-      orbitC: typeof prev.orbitC === "boolean" ? prev.orbitC : derived.orbitC.enabled,
-      ...prev,
+      orbitA: syncBoolIfStillDefault(prev.orbitA, derived.orbitA.enabled, true),
+      orbitB: syncBoolIfStillDefault(prev.orbitB, derived.orbitB.enabled, true),
+      orbitC: syncBoolIfStillDefault(prev.orbitC, derived.orbitC.enabled, true),
     }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orbitLayers]);
+  }, [derived]);
 
   function handleOrbitSceneChange(nextId) {
     onOrbitSceneChange?.(nextId);
@@ -160,6 +232,12 @@ export function OrbitPanel({
     });
   }
 
+  // Build select options per-orbit, including a “Custom” value if needed
+  function getTimeSigSelectOptions(currentValue) {
+    const curatedHas = isInCuratedList(currentValue);
+    return { curatedHas, currentValue };
+  }
+
   return (
     <section className="orbits-column">
       {/* Header */}
@@ -169,6 +247,12 @@ export function OrbitPanel({
           <p className="orbits-subtitle">
             Orbit presets define the combined motion: which orbits are enabled,
             their time signatures, arp patterns, and mix.
+          </p>
+
+          {/* Small musical clarification */}
+          <p className="orbits-subtitle" style={{ marginTop: 6, opacity: 0.9 }}>
+            <b>Musical note:</b> Denominator labels the subdivision (quarters/eighths/etc).{" "}
+            <b>In OMSE, the numerator sets pulses per master cycle.</b>
           </p>
         </div>
 
@@ -205,7 +289,8 @@ export function OrbitPanel({
               {orbitSceneOptions?.length ? (
                 orbitSceneOptions.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.sig ? `${p.sig} — ` : ""}{p.label}
+                    {p.sig ? `${p.sig} — ` : ""}
+                    {p.label}
                   </option>
                 ))
               ) : (
@@ -215,11 +300,7 @@ export function OrbitPanel({
 
             <div className="orbits-rack-hint">
               <span className="orbits-hint-dot" />
-              <span>
-                {onOrbitSceneChange
-                  ? "Orbit preset wired"
-                  : "UI ready (wire orbit preset selection in App)"}
-              </span>
+              <span>{onOrbitSceneChange ? "Orbit preset wired" : "UI ready (wire orbit preset selection in App)"}</span>
             </div>
           </div>
         </div>
@@ -236,7 +317,10 @@ export function OrbitPanel({
           // planned (always selectable)
           const timeSigValue = localTimeSig?.[id] ?? derived?.[id]?.timeSig ?? "4/4";
           const arpValue = localArp?.[id] ?? derived?.[id]?.arp ?? "off";
-          const enabledValue = typeof localEnabled?.[id] === "boolean" ? localEnabled[id] : true;
+          const enabledValue =
+            typeof localEnabled?.[id] === "boolean" ? localEnabled[id] : true;
+
+          const { curatedHas } = getTimeSigSelectOptions(timeSigValue);
 
           return (
             <article
@@ -275,9 +359,7 @@ export function OrbitPanel({
               {/* Pattern Toggle (audio action) */}
               <button
                 type="button"
-                className={
-                  "orbit-pill" + (patternOn ? " orbit-pill--on" : " orbit-pill--off")
-                }
+                className={"orbit-pill" + (patternOn ? " orbit-pill--on" : " orbit-pill--off")}
                 onClick={() => onOrbitPatternToggle?.(id)}
                 disabled={!audioReady || !onOrbitPatternToggle}
                 title={audioReady ? "Toggle pattern" : "Initialize audio first"}
@@ -293,11 +375,23 @@ export function OrbitPanel({
                     className="orbits-select orbits-select--micro"
                     value={timeSigValue}
                     onChange={(e) => handleTimeSigChange(id, e.target.value)}
+                    title="Denominator labels subdivision; numerator sets pulses per master cycle (OMSE)"
                   >
-                    {TIME_SIG_OPTIONS.map((t) => (
-                      <option key={t} value={t}>
-                        {t}
+                    {/* If current value isn’t curated (legacy/custom), keep it selectable */}
+                    {!curatedHas && (
+                      <option key={`custom-${timeSigValue}`} value={timeSigValue}>
+                        {`Custom: ${formatTimeSigLabel(timeSigValue)}`}
                       </option>
+                    )}
+
+                    {TIME_SIG_GROUPS.map((group) => (
+                      <optgroup key={group.label} label={group.label}>
+                        {group.options.map((sig) => (
+                          <option key={sig} value={sig}>
+                            {formatTimeSigLabel(sig)}
+                          </option>
+                        ))}
+                      </optgroup>
                     ))}
                   </select>
                 </label>
@@ -355,9 +449,7 @@ export function OrbitPanel({
                     max={1}
                     step={0.01}
                     value={pan}
-                    onChange={(e) =>
-                      onOrbitPanChange?.(id, clamp(e.target.value, -1, 1))
-                    }
+                    onChange={(e) => onOrbitPanChange?.(id, clamp(e.target.value, -1, 1))}
                     disabled={!audioReady || !onOrbitPanChange}
                   />
                 </div>

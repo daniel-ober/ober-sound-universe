@@ -26,14 +26,18 @@ function clamp(v, min, max) {
 
 /**
  * Parse "6/4" => { steps: 6, denom: 4 }
- * We use numerator as a "cycle length" for orbit polyrhythm stepping.
  */
 function parseTimeSig(sig) {
   if (typeof sig !== "string") return { steps: 4, denom: 4 };
   const [a, b] = sig.split("/");
-  const steps = clamp(parseInt(a, 10) || 4, 1, 32);
+  const steps = clamp(parseInt(a, 10) || 4, 1, 64);
   const denom = clamp(parseInt(b, 10) || 4, 1, 32);
   return { steps, denom };
+}
+
+function safeTimeSigString(sig) {
+  const { steps, denom } = parseTimeSig(sig);
+  return `${steps}/${denom}`;
 }
 
 /**
@@ -75,6 +79,15 @@ function buildOrbitSynthFromPreset(voicePreset) {
 
 /**
  * Ober MotionSynth Engine (OMSE)
+ *
+ * Key concept:
+ * ✅ TRUE POLYRHYTHM MODEL
+ * - Master defines a "cycle" length (in measures) and master time signature (defines what 1 measure means).
+ * - Each Orbit "timeSig" uses its NUMERATOR as "pulses per master cycle".
+ *   Example: master = 1 measure of 4/4. orbitA = 3/4 => 3 pulses per cycle.
+ *   That feels like its own tempo because the orbit interval becomes (cycleSeconds / 3).
+ *
+ * This is different than polymeter (shared grid with different barlines).
  */
 class OMSEEngine {
   constructor() {
@@ -106,6 +119,8 @@ class OMSEEngine {
     };
 
     // Per-voice active note maps
+    // NOTE: For core, this Set is ALSO used as the "held/sustained notes" source
+    // for arps. That means: if empty => arps produce NO notes (no autoplay).
     this.activeNotes = {
       core: new Set(),
       orbitA: new Set(),
@@ -113,8 +128,13 @@ class OMSEEngine {
       orbitC: new Set(),
     };
 
+    // Sustain support (so arps can run when notes are sustained)
+    // - sustainDown: if true, releasing a key keeps it in core activeNotes
+    // - sustainLatched: notes released while sustain is down
+    this.sustainDown = false;
+    this.sustainLatched = new Set();
+
     // Orbit config + motion state
-    // (kept separate so loops can read latest values without rebuild)
     this.orbitConfig = {
       orbitA: { enabled: true, voicePresetId: null },
       orbitB: { enabled: true, voicePresetId: null },
@@ -133,6 +153,15 @@ class OMSEEngine {
       orbitB: null,
       orbitC: null,
     };
+
+    // -----------------------------
+    // MASTER CLOCK CONFIG
+    // -----------------------------
+    this.master = {
+      timeSig: "4/4", // affects what "1m" means
+      cycleMeasures: 1, // user-defined cycle length in measures (1..64)
+      bpm: 90,
+    };
   }
 
   // ---------- PUBLIC API ----------
@@ -143,10 +172,90 @@ class OMSEEngine {
     await Tone.start();
     this._buildGraph();
 
-    Tone.Transport.bpm.value = 90;
+    // Apply master to transport BEFORE starting
+    this._applyMasterToTransport();
+
     Tone.Transport.start();
 
+    // Ensure per-orbit intervals match master cycle
+    this._refreshAllOrbitIntervals();
+
     this.initialized = true;
+  }
+
+  // -----------------------------
+  // MASTER CONTROLS
+  // -----------------------------
+
+  setMasterBpm(bpm) {
+    const v = clamp(parseFloat(bpm) || 90, 20, 300);
+    this.master.bpm = v;
+
+    if (!this.initialized) return;
+
+    if (Tone.Transport?.bpm?.rampTo) Tone.Transport.bpm.rampTo(v, 0.2);
+    else Tone.Transport.bpm.value = v;
+
+    this._refreshAllOrbitIntervals();
+  }
+
+  setMasterTimeSig(timeSig) {
+    const next = safeTimeSigString(timeSig || "4/4");
+    this.master.timeSig = next;
+
+    if (!this.initialized) return;
+
+    const { steps, denom } = parseTimeSig(next);
+    Tone.Transport.timeSignature = [steps, denom];
+
+    this._refreshAllOrbitIntervals();
+  }
+
+  setMasterCycleMeasures(n) {
+    const v = clamp(parseInt(n, 10) || 1, 1, 64);
+    this.master.cycleMeasures = v;
+
+    if (!this.initialized) return;
+    this._refreshAllOrbitIntervals();
+  }
+
+  resetMasterToFourFour() {
+    this.setMasterTimeSig("4/4");
+  }
+
+  getMasterSettings() {
+    return {
+      bpm: this.master.bpm,
+      timeSig: this.master.timeSig,
+      cycleMeasures: this.master.cycleMeasures,
+    };
+  }
+
+  /**
+   * Sustain (optional)
+   * - If your UI/keyboard wires sustain pedal, call setSustain(true/false).
+   * - Arps will also treat sustained notes as "held" (because they remain in activeNotes.core).
+   */
+  setSustain(isDown) {
+    const next = !!isDown;
+    const prev = this.sustainDown;
+    this.sustainDown = next;
+
+    // Sustain released: release any notes that were latched and are not physically held anymore
+    if (prev && !next && this.initialized) {
+      for (const note of Array.from(this.sustainLatched)) {
+        // Only release if not currently held (defensive: core held notes are in activeNotes.core)
+        if (this.activeNotes.core.has(note)) {
+          // This note is only present due to sustain latch; remove + release
+          Object.values(this.core.layers).forEach((layer) => {
+            if (!layer) return;
+            layer.synth.triggerRelease(note);
+          });
+          this.activeNotes.core.delete(note);
+        }
+      }
+      this.sustainLatched.clear();
+    }
   }
 
   /**
@@ -160,6 +269,10 @@ class OMSEEngine {
         if (!layer) return;
         layer.synth.triggerAttack(note, undefined, velocity);
       });
+
+      // If this was previously latched by sustain, unlatch it
+      this.sustainLatched.delete(note);
+
       this.activeNotes.core.add(note);
       return;
     }
@@ -178,6 +291,13 @@ class OMSEEngine {
 
     if (voiceId === "core") {
       if (!this.activeNotes.core.has(note)) return;
+
+      // If sustain is down, keep the note "held" for arp gating + audio sustain
+      if (this.sustainDown) {
+        this.sustainLatched.add(note);
+        return;
+      }
+
       Object.values(this.core.layers).forEach((layer) => {
         if (!layer) return;
         layer.synth.triggerRelease(note);
@@ -208,6 +328,8 @@ class OMSEEngine {
       });
     });
 
+    // NOTE: Patterns can be started for testing, but arps will NOT output
+    // any notes unless keys are held/sustained (activeNotes.core non-empty).
     this.startOrbitPattern("orbitA");
     this.startOrbitPattern("orbitB");
     this.startOrbitPattern("orbitC");
@@ -238,7 +360,6 @@ class OMSEEngine {
     const v = clamp01(normalized);
     orbit.baseGain = v;
 
-    // smooth to avoid clicks + avoid perceived "reset"
     if (orbit.gain?.gain?.rampTo) orbit.gain.gain.rampTo(orbit.muted ? 0 : v, 0.03);
     else orbit.gain.gain.value = orbit.muted ? 0 : v;
   }
@@ -259,7 +380,6 @@ class OMSEEngine {
 
     const v = clamp(pan, -1, 1);
 
-    // smooth pan to avoid stepping
     if (orbit.panner.pan.rampTo) orbit.panner.pan.rampTo(v, 0.03);
     else orbit.panner.pan.value = v;
   }
@@ -270,7 +390,6 @@ class OMSEEngine {
       enabled: !!enabled,
     };
 
-    // If disabling, stop pattern and silence orbit
     if (!enabled) {
       this.setOrbitPatternState(orbitId, false);
       const orbit = this.orbits[orbitId];
@@ -281,7 +400,6 @@ class OMSEEngine {
       return;
     }
 
-    // If enabling, restore gain according to mute/baseGain
     const orbit = this.orbits[orbitId];
     if (orbit) {
       const target = orbit.muted ? 0 : orbit.baseGain;
@@ -290,36 +408,51 @@ class OMSEEngine {
     }
   }
 
+  /**
+   * ✅ Orbit timeSig (true polyrhythm model):
+   * - numerator = pulses per MASTER CYCLE
+   * - denominator is treated as UI label (not timing)
+   */
   setOrbitTimeSig(orbitId, timeSig) {
+    const nextSig = safeTimeSigString(timeSig || "4/4");
+    const prev = this.orbitMotion?.[orbitId] || {};
+    const changed = prev.timeSig !== nextSig;
+
     this.orbitMotion[orbitId] = {
-      ...(this.orbitMotion[orbitId] || {}),
-      timeSig: timeSig || "4/4",
-      step: 0, // reset step is OK and should NOT restart loop
+      ...prev,
+      timeSig: nextSig,
+      ...(changed ? { step: 0 } : {}),
     };
+
+    // interval depends on master cycle seconds / numerator
+    this._refreshOrbitInterval(orbitId);
   }
 
   setOrbitArp(orbitId, arp) {
+    const nextArp = arp || "off";
+    const prev = this.orbitMotion?.[orbitId] || {};
+    const changed = prev.arp !== nextArp;
+
     this.orbitMotion[orbitId] = {
-      ...(this.orbitMotion[orbitId] || {}),
-      arp: arp || "off",
-      step: 0, // reset step is OK and should NOT restart loop
+      ...prev,
+      arp: nextArp,
+      ...(changed ? { step: 0 } : {}),
     };
   }
 
+  /**
+   * rate controls note length / articulation only
+   */
   setOrbitRate(orbitId, rate) {
+    const prev = this.orbitMotion?.[orbitId] || {};
     this.orbitMotion[orbitId] = {
-      ...(this.orbitMotion[orbitId] || {}),
+      ...prev,
       rate: rate || "8n",
     };
-
-    // update loop interval live (no rebuild)
-    const loop = this.orbitPatterns[orbitId];
-    if (loop) loop.interval = rate || "8n";
   }
 
   /**
    * ✅ Only start/stop patterns through this.
-   * This prevents re-phasing when you tweak mix params.
    */
   setOrbitPatternState(orbitId, isOn) {
     if (!this.initialized) return;
@@ -339,28 +472,23 @@ class OMSEEngine {
 
   /**
    * Swap orbit synth based on ORBIT_VOICE_PRESETS
-   * This DOES rebuild the synth node, but preserves the orbit panner/gain/meter chain.
-   * Called only on orbit scene/preset changes, not on slider changes.
+   * Preserves orbit panner/gain/meter chain.
    */
   setOrbitVoicePreset(orbitId, voicePreset) {
     const orbit = this.orbits[orbitId];
     if (!orbit) return;
 
     try {
-      // release any held notes
       this.activeNotes[orbitId]?.forEach((n) => {
         orbit.synth.triggerRelease(n);
       });
       this.activeNotes[orbitId]?.clear?.();
 
-      // dispose old synth
       orbit.synth?.disconnect?.();
       orbit.synth?.dispose?.();
 
-      // build new synth
       const synth = buildOrbitSynthFromPreset(voicePreset);
 
-      // optional filter if provided
       const filterCfg = voicePreset?.params?.filter;
       if (filterCfg) {
         const f = new Tone.Filter({
@@ -372,7 +500,6 @@ class OMSEEngine {
         f.connect(orbit.panner);
         orbit._filter = f;
       } else {
-        // remove old filter if existed
         if (orbit._filter) {
           orbit._filter.disconnect();
           orbit._filter.dispose();
@@ -388,7 +515,7 @@ class OMSEEngine {
     }
   }
 
-  // Back-compat wrappers (no longer used by App for toggling)
+  // Back-compat wrappers
   startOrbitPattern(orbitId) {
     this.setOrbitPatternState(orbitId, true);
   }
@@ -434,13 +561,6 @@ class OMSEEngine {
 
   /**
    * ✅ Apply a full Orbit Master Preset
-   * scene shape:
-   * {
-   *   orbits: {
-   *     orbitA: { enabled, voicePresetId, motion:{timeSig, arp, rate, patternOn}, mix:{gain, pan, muted} },
-   *     ...
-   *   }
-   * }
    */
   applyOrbitScenePreset(scene, voicePresetMap) {
     if (!this.initialized || !scene?.orbits) return;
@@ -449,38 +569,88 @@ class OMSEEngine {
       const cfg = scene.orbits?.[orbitId];
       if (!cfg) return;
 
-      // enabled
       this.setOrbitEnabled(orbitId, !!cfg.enabled);
 
-      // voice preset id
       const voiceId = cfg.voicePresetId || null;
       this.orbitConfig[orbitId] = {
         ...(this.orbitConfig[orbitId] || {}),
         voicePresetId: voiceId,
       };
 
-      // swap synth if preset exists
       const voicePreset = voiceId ? voicePresetMap?.[voiceId] : null;
       if (voicePreset) this.setOrbitVoicePreset(orbitId, voicePreset);
 
-      // mix
       const mix = cfg.mix || {};
       this.setOrbitGain(orbitId, clamp01(mix.gain ?? 0.6));
       this.setOrbitPan(orbitId, clamp(mix.pan ?? 0, -1, 1));
       this.setOrbitMute(orbitId, !!mix.muted);
 
-      // motion
       const motion = cfg.motion || {};
       this.setOrbitTimeSig(orbitId, motion.timeSig || "4/4");
       this.setOrbitArp(orbitId, motion.arp || "off");
       this.setOrbitRate(orbitId, motion.rate || "8n");
 
-      // pattern on/off (ONLY here or via UI toggle)
       this.setOrbitPatternState(orbitId, !!motion.patternOn);
     });
+
+    // Ensure intervals match master cycle after applying scene
+    this._refreshAllOrbitIntervals();
   }
 
   // ---------- INTERNAL ----------
+
+  _applyMasterToTransport() {
+    Tone.Transport.bpm.value = this.master.bpm;
+
+    const { steps, denom } = parseTimeSig(this.master.timeSig);
+    Tone.Transport.timeSignature = [steps, denom];
+  }
+
+  /**
+   * Compute seconds for ONE measure based on current Transport settings.
+   * Tone.Time("1m") uses Transport timeSignature internally.
+   */
+  _getMeasureSeconds() {
+    try {
+      const s = Tone.Time("1m").toSeconds();
+      if (Number.isFinite(s) && s > 0) return s;
+    } catch {
+      // ignore
+    }
+
+    // fallback
+    const bpm = Tone.Transport?.bpm?.value || this.master.bpm || 90;
+    const beat = 60 / Math.max(1, bpm);
+    return beat * 4;
+  }
+
+  _getMasterCycleSeconds() {
+    const measures = clamp(parseInt(this.master.cycleMeasures, 10) || 1, 1, 64);
+    return this._getMeasureSeconds() * measures;
+  }
+
+  _refreshAllOrbitIntervals() {
+    ["orbitA", "orbitB", "orbitC"].forEach((id) => this._refreshOrbitInterval(id));
+  }
+
+  /**
+   * ✅ True polyrhythm:
+   * Orbit interval = masterCycleSeconds / orbitNumerator(steps)
+   */
+  _refreshOrbitInterval(orbitId) {
+    const loop = this.orbitPatterns?.[orbitId];
+    if (!loop) return;
+
+    const motion = this.orbitMotion?.[orbitId] || {};
+    const { steps } = parseTimeSig(motion.timeSig || "4/4");
+
+    const cycleSeconds = this._getMasterCycleSeconds();
+    const pulses = Math.max(1, steps);
+
+    const intervalSeconds = cycleSeconds / pulses;
+
+    loop.interval = intervalSeconds;
+  }
 
   _buildGraph() {
     // MASTER BUS
@@ -522,7 +692,7 @@ class OMSEEngine {
       airy: true,
     });
 
-    // ORBITS (voice synth will be swapped by applyOrbitScenePreset)
+    // ORBITS
     this.orbits.orbitA = this._buildOrbitVoice({
       type: "square",
       pan: -0.25,
@@ -539,10 +709,13 @@ class OMSEEngine {
       baseGain: 0.65,
     });
 
-    // Orbit pattern loops: ARP + polyrhythm aware
+    // Orbit pattern loops
     this.orbitPatterns.orbitA = this._makeOrbitArpLoop("orbitA");
     this.orbitPatterns.orbitB = this._makeOrbitArpLoop("orbitB");
     this.orbitPatterns.orbitC = this._makeOrbitArpLoop("orbitC");
+
+    // Set initial intervals (master-cycle based)
+    this._refreshAllOrbitIntervals();
   }
 
   _buildCoreLayer({ type, spread, detune, baseGain, airy = false }) {
@@ -592,14 +765,26 @@ class OMSEEngine {
     synth.connect(panner);
     panner.connect(gain);
 
-    return { synth, panner, gain, meter, muted: false, baseGain, _filter: null };
+    return {
+      synth,
+      panner,
+      gain,
+      meter,
+      muted: false,
+      baseGain,
+      _filter: null,
+    };
   }
 
   /**
-   * Orbit ARP loop:
-   * - Uses currently held core notes (activeNotes.core) as the "chord"
-   * - Falls back to a safe chord if none held
-   * - Polyrhythm cycle length comes from timeSig numerator (e.g. 5/4 => 5 steps)
+   * Orbit ARP loop (true polyrhythm model):
+   * - Loop interval is masterCycleSeconds / numerator (set in _refreshOrbitInterval)
+   * - step wraps at numerator (cycle length)
+   * - rate controls note duration
+   *
+   * ✅ IMPORTANT: NO AUTOPLAY
+   * - Arp only outputs notes when core has held/sustained notes (activeNotes.core non-empty).
+   * - No fallback chord.
    */
   _makeOrbitArpLoop(orbitId) {
     const loop = new Tone.Loop((time) => {
@@ -613,23 +798,20 @@ class OMSEEngine {
 
       const motion = this.orbitMotion?.[orbitId] || {};
       const arp = motion.arp || "off";
-
-      // if arp "off", do nothing (pattern running but silent by design)
       if (arp === "off") return;
 
       const { steps } = parseTimeSig(motion.timeSig || "4/4");
+      const noteLen = motion.rate || "8n";
 
-      // chord source: held core notes, sorted low->high
+      // ✅ Gate arp output behind HELD/SUSTAINED notes (no autoplay)
       const chord = Array.from(this.activeNotes.core || []);
-      const notes = chord.length > 0 ? chord : ["C4", "E4", "G4", "B4"];
+      if (!chord.length) return;
 
-      // stable ordering
-      const sorted = notes
+      const sorted = chord
         .map((n) => ({ n, m: Tone.Frequency(n).toMidi() }))
         .sort((a, b) => a.m - b.m)
         .map((x) => x.n);
 
-      // polyrhythm stepping
       const step = motion.step || 0;
       const idxBase = step % Math.max(1, steps);
 
@@ -659,7 +841,6 @@ class OMSEEngine {
           pick = Math.floor(Math.random() * sorted.length);
           break;
         default: {
-          // Treat custom UI flavors as upDown until we implement them
           const cycle = sorted.length * 2 - 2;
           const i = cycle > 0 ? idxBase % cycle : 0;
           pick = i < sorted.length ? i : cycle - i;
@@ -668,14 +849,14 @@ class OMSEEngine {
       }
 
       const note = sorted[pick] || sorted[0];
-      orbit.synth.triggerAttackRelease(note, "16n", time);
+      orbit.synth.triggerAttackRelease(note, noteLen, time);
 
-      // advance step (no loop restart; just changes which note is chosen)
+      // Only advance step when we actually played something (still true-polyrhythm)
       this.orbitMotion[orbitId] = {
         ...motion,
         step: (step + 1) % Math.max(1, steps),
       };
-    }, "8n"); // interval will be overridden by setOrbitRate()
+    }, 0.25); // placeholder; overwritten by _refreshOrbitInterval()
 
     return loop;
   }

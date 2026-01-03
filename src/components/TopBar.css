@@ -1,4 +1,6 @@
-/* existing capsule styles (unchanged) */
+/* src/components/TopBar.css */
+
+/* existing capsule styles (kept, but extended for master controls) */
 
 .topbar-shell {
   width: 100%;
@@ -24,7 +26,6 @@
 }
 
 /* left: brand + galaxy */
-
 .topbar-left {
   display: flex;
   flex-direction: column;
@@ -45,15 +46,150 @@
   color: rgba(238, 244, 255, 0.98);
 }
 
-/* center: keyboard helper */
+/* center: helper + master controls */
 
 .topbar-center {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-width: 320px;
+}
+
+.topbar-helper {
   font-size: 11px;
   color: rgba(178, 196, 230, 0.9);
 }
 
-/* right: buttons + meters */
+.topbar-master {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
 
+.topbar-master-block {
+  padding: 8px 10px;
+  border-radius: 14px;
+  background: rgba(10, 14, 30, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+
+.topbar-master-block.compact {
+  padding: 8px 10px;
+}
+
+.topbar-master-label {
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(171, 187, 220, 0.86);
+  margin-bottom: 6px;
+}
+
+/* BPM controls */
+.topbar-bpm-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.topbar-bpm-range {
+  width: 170px;
+}
+
+.topbar-bpm-input {
+  width: 74px;
+  border-radius: 10px;
+  padding: 6px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(16, 20, 38, 0.88);
+  color: rgba(231, 240, 255, 0.96);
+  outline: none;
+  font-size: 12px;
+}
+
+/* time signature controls */
+.topbar-sig-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.topbar-sig-select {
+  border-radius: 10px;
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(16, 20, 38, 0.88);
+  color: rgba(231, 240, 255, 0.96);
+  outline: none;
+  font-size: 12px;
+}
+
+.topbar-pill {
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(16, 20, 38, 0.88);
+  color: rgba(211, 222, 246, 0.95);
+  cursor: pointer;
+  transition: background var(--transition-fast), box-shadow var(--transition-fast),
+    transform var(--transition-fast), border-color var(--transition-fast);
+}
+
+.topbar-pill:hover {
+  background: rgba(26, 34, 64, 0.98);
+  box-shadow: 0 0 12px rgba(152, 196, 255, 0.55);
+  border-color: rgba(255, 255, 255, 0.09);
+  transform: translateY(-0.5px);
+}
+
+.topbar-pill.locked {
+  opacity: 0.9;
+}
+
+.topbar-pill.unlocked {
+  box-shadow: 0 0 10px rgba(255, 210, 140, 0.35);
+}
+
+.topbar-pill.reset {
+  background: rgba(28, 20, 20, 0.7);
+}
+
+/* cycle controls */
+.topbar-cycle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.topbar-cycle-hint {
+  font-size: 11px;
+  color: rgba(178, 196, 230, 0.88);
+}
+
+.topbar-cycle-input {
+  width: 70px;
+  border-radius: 10px;
+  padding: 6px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(16, 20, 38, 0.88);
+  color: rgba(231, 240, 255, 0.96);
+  outline: none;
+  font-size: 12px;
+}
+
+.topbar-cycle-sub {
+  margin-top: 6px;
+  font-size: 10px;
+  color: rgba(171, 187, 220, 0.72);
+}
+
+/* right: buttons + meters */
 .topbar-right {
   display: flex;
   align-items: center;
@@ -61,7 +197,6 @@
 }
 
 /* generic pill buttons */
-
 .topbar-btn {
   border-radius: 999px;
   padding: 7px 14px;
@@ -103,7 +238,6 @@
 }
 
 /* output meters cluster */
-
 .topbar-output {
   display: flex;
   align-items: center;
@@ -125,16 +259,28 @@
   width: 80px;
 }
 
+@media (max-width: 980px) {
+  .topbar-inner {
+    border-radius: 26px;
+    align-items: flex-start;
+  }
+}
+
 @media (max-width: 780px) {
   .topbar-inner {
     flex-direction: column;
     align-items: flex-start;
     gap: 10px;
+    border-radius: 22px;
   }
 
   .topbar-right {
     width: 100%;
     justify-content: flex-start;
     flex-wrap: wrap;
+  }
+
+  .topbar-bpm-range {
+    width: 190px;
   }
 }

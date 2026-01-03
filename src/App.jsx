@@ -29,6 +29,18 @@ function getOrbitSceneById(id) {
   return ORBIT_MASTER_PRESETS.find((p) => p.id === id) || null;
 }
 
+function clampBpm(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return 90;
+  return Math.max(20, Math.min(300, n));
+}
+
+function clampInt(v, min, max, fallback) {
+  const n = parseInt(v, 10);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, n));
+}
+
 /**
  * Convert an Orbit Master Preset scene -> UI state
  */
@@ -122,6 +134,18 @@ function App() {
   const [audioReady, setAudioReady] = useState(false);
   const [isPlayingDemo, setIsPlayingDemo] = useState(false);
 
+  // -------------------------------
+  // MASTER CLOCK UI STATE
+  // -------------------------------
+  const [masterBpm, setMasterBpm] = useState(90);
+
+  // default locked to 4/4, user can unlock to change
+  const [masterTimeSig, setMasterTimeSig] = useState("4/4");
+  const [masterSigLocked, setMasterSigLocked] = useState(true);
+
+  // user-defined cycle length (in measures)
+  const [masterCycleMeasures, setMasterCycleMeasures] = useState(1);
+
   // active master preset id (presetA … presetE)
   const [activePreset, setActivePreset] = useState(
     galaxy0.defaultPresetId ?? "presetA"
@@ -196,8 +220,7 @@ function App() {
   }, [audioReady]);
 
   // -------------------------------
-  // Continuous-safe engine application helpers
-  // (DO NOT touch pattern scheduling here)
+  // Engine application helpers
   // -------------------------------
   const applyCoreLayerToEngine = (layerId, layer) => {
     if (!audioReady) return;
@@ -228,11 +251,42 @@ function App() {
   }, [audioReady, orbitPatterns]);
 
   // -------------------------------
+  // MASTER CLOCK handlers
+  // -------------------------------
+  const handleMasterTempoChange = (nextBpm) => {
+    const v = clampBpm(nextBpm);
+    setMasterBpm(v);
+    if (audioReady) omseEngine.setMasterBpm(v);
+  };
+
+  const handleMasterTimeSigChange = (nextSig) => {
+    setMasterTimeSig(nextSig);
+    if (audioReady) omseEngine.setMasterTimeSig(nextSig);
+  };
+
+  const handleMasterCycleMeasuresChange = (nextMeasures) => {
+    const v = clampInt(nextMeasures, 1, 64, 1);
+    setMasterCycleMeasures(v);
+    if (audioReady) omseEngine.setMasterCycleMeasures(v);
+  };
+
+  const handleResetMasterTimeSig = () => {
+    setMasterSigLocked(true);
+    setMasterTimeSig("4/4");
+    if (audioReady) omseEngine.resetMasterToFourFour();
+  };
+
+  // -------------------------------
   // Top-level controls
   // -------------------------------
   const handleInitAudio = async () => {
     await omseEngine.startAudioContext();
     setAudioReady(true);
+
+    // Apply master immediately after init
+    omseEngine.setMasterBpm(masterBpm);
+    omseEngine.setMasterCycleMeasures(masterCycleMeasures);
+    omseEngine.setMasterTimeSig(masterTimeSig);
 
     // Apply core
     const core = normalizeCore(activePresetConfig?.core);
@@ -259,7 +313,7 @@ function App() {
         applyOrbitToEngine(orbitId, layer);
       });
     } else {
-      // fallback: apply current UI orbit state
+      // fallback
       Object.entries(orbitLayers).forEach(([orbitId, layer]) => {
         applyOrbitToEngine(orbitId, layer);
       });
@@ -322,10 +376,8 @@ function App() {
     setOrbitPatterns(nextOrbitState.orbitPatterns);
 
     if (audioReady && scene) {
-      // voice swap + baseline + patternOn (safe)
       omseEngine.applyOrbitScenePreset(scene, ORBIT_VOICE_PRESETS);
 
-      // then apply mix/motion live (patterns handled by effect too)
       Object.entries(nextOrbitState.orbitLayers).forEach(([orbitId, layer]) => {
         applyOrbitToEngine(orbitId, layer);
       });
@@ -333,7 +385,7 @@ function App() {
   };
 
   // -------------------------------
-  // Core mixer handlers (NO pattern touching)
+  // Core mixer handlers
   // -------------------------------
   const handleLayerGainChange = (layerId, newPercent) => {
     setCoreLayers((prev) => {
@@ -355,19 +407,21 @@ function App() {
   };
 
   // -------------------------------
-  // Orbit mixer handlers (NO pattern touching)
+  // Orbit mixer handlers
   // -------------------------------
+  const baseOrbitFallback = {
+    gain: 0,
+    pan: 0,
+    muted: false,
+    timeSig: "4/4",
+    arp: "off",
+    rate: "8n",
+    enabled: true,
+  };
+
   const handleOrbitGainChange = (orbitId, newPercent) => {
     setOrbitLayers((prev) => {
-      const cur = prev[orbitId] || {
-        gain: 0,
-        pan: 0,
-        muted: false,
-        timeSig: "4/4",
-        arp: "off",
-        rate: "8n",
-        enabled: true,
-      };
+      const cur = prev[orbitId] || baseOrbitFallback;
       const nextLayer = { ...cur, gain: newPercent };
       const next = { ...prev, [orbitId]: nextLayer };
       applyOrbitToEngine(orbitId, nextLayer);
@@ -377,15 +431,7 @@ function App() {
 
   const handleOrbitMuteToggle = (orbitId) => {
     setOrbitLayers((prev) => {
-      const cur = prev[orbitId] || {
-        gain: 0,
-        pan: 0,
-        muted: false,
-        timeSig: "4/4",
-        arp: "off",
-        rate: "8n",
-        enabled: true,
-      };
+      const cur = prev[orbitId] || baseOrbitFallback;
       const nextLayer = { ...cur, muted: !cur.muted };
       const next = { ...prev, [orbitId]: nextLayer };
       applyOrbitToEngine(orbitId, nextLayer);
@@ -395,15 +441,7 @@ function App() {
 
   const handleOrbitPanChange = (orbitId, newPan) => {
     setOrbitLayers((prev) => {
-      const cur = prev[orbitId] || {
-        gain: 0,
-        pan: 0,
-        muted: false,
-        timeSig: "4/4",
-        arp: "off",
-        rate: "8n",
-        enabled: true,
-      };
+      const cur = prev[orbitId] || baseOrbitFallback;
       const nextLayer = { ...cur, pan: newPan };
       const next = { ...prev, [orbitId]: nextLayer };
       applyOrbitToEngine(orbitId, nextLayer);
@@ -413,15 +451,7 @@ function App() {
 
   const handleOrbitTimeSigChange = (orbitId, nextSig) => {
     setOrbitLayers((prev) => {
-      const cur = prev[orbitId] || {
-        gain: 0,
-        pan: 0,
-        muted: false,
-        timeSig: "4/4",
-        arp: "off",
-        rate: "8n",
-        enabled: true,
-      };
+      const cur = prev[orbitId] || baseOrbitFallback;
       const nextLayer = { ...cur, timeSig: nextSig };
       const next = { ...prev, [orbitId]: nextLayer };
       applyOrbitToEngine(orbitId, nextLayer);
@@ -431,15 +461,7 @@ function App() {
 
   const handleOrbitArpChange = (orbitId, nextArp) => {
     setOrbitLayers((prev) => {
-      const cur = prev[orbitId] || {
-        gain: 0,
-        pan: 0,
-        muted: false,
-        timeSig: "4/4",
-        arp: "off",
-        rate: "8n",
-        enabled: true,
-      };
+      const cur = prev[orbitId] || baseOrbitFallback;
       const nextLayer = { ...cur, arp: nextArp };
       const next = { ...prev, [orbitId]: nextLayer };
       applyOrbitToEngine(orbitId, nextLayer);
@@ -449,15 +471,7 @@ function App() {
 
   const handleOrbitEnabledChange = (orbitId, enabled) => {
     setOrbitLayers((prev) => {
-      const cur = prev[orbitId] || {
-        gain: 0,
-        pan: 0,
-        muted: false,
-        timeSig: "4/4",
-        arp: "off",
-        rate: "8n",
-        enabled: true,
-      };
+      const cur = prev[orbitId] || baseOrbitFallback;
       const nextLayer = { ...cur, enabled };
       const next = { ...prev, [orbitId]: nextLayer };
       applyOrbitToEngine(orbitId, nextLayer);
@@ -466,7 +480,6 @@ function App() {
   };
 
   // ✅ Pattern toggle ONLY changes state.
-  // The effect above starts/stops loops without re-syncing everything else.
   const handleOrbitPatternToggle = (orbitId) => {
     if (!audioReady) return;
     setOrbitPatterns((prev) => ({ ...prev, [orbitId]: !prev?.[orbitId] }));
@@ -486,6 +499,15 @@ function App() {
                 isPlayingDemo={isPlayingDemo}
                 onInitAudio={handleInitAudio}
                 onPlayTestScene={handlePlayTestScene}
+                masterBpm={masterBpm}
+                onMasterTempoChange={handleMasterTempoChange}
+                masterTimeSig={masterTimeSig}
+                onMasterTimeSigChange={handleMasterTimeSigChange}
+                masterSigLocked={masterSigLocked}
+                onToggleMasterSigLocked={() => setMasterSigLocked((v) => !v)}
+                onResetMasterTimeSig={handleResetMasterTimeSig}
+                masterCycleMeasures={masterCycleMeasures}
+                onMasterCycleMeasuresChange={handleMasterCycleMeasuresChange}
               />
 
               <GalaxyPresetBar
