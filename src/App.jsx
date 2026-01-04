@@ -421,26 +421,37 @@ function App() {
       getOrbitSceneById(orbitSceneId) || getOrbitSceneById(initialOrbitSceneId);
 
     if (scene) {
-      omseEngine.applyOrbitScenePreset(scene, ORBIT_VOICE_PRESETS);
-
       const nextOrbitState = sceneToOrbitState(scene);
+
+      // UI state
       setOrbitLayers(nextOrbitState.orbitLayers);
       setOrbitPatterns(nextOrbitState.orbitPatterns);
 
-      // Apply mix/motion immediately
+      // ✅ Engine: apply normalized layer state (no schema ambiguity)
       Object.entries(nextOrbitState.orbitLayers).forEach(([orbitId, layer]) => {
-        omseEngine.setOrbitEnabled(orbitId, layer.enabled !== false);
-        omseEngine.setOrbitGain(orbitId, (layer.gain ?? 0) / 100);
-        omseEngine.setOrbitMute(orbitId, !!layer.muted);
-        omseEngine.setOrbitPan(orbitId, layer.pan ?? 0);
-        omseEngine.setOrbitTimeSig(orbitId, layer.timeSig || "4/4");
-        omseEngine.setOrbitArp(orbitId, layer.arp || "off");
-        omseEngine.setOrbitRate(orbitId, layer.rate || "8n");
+        applyOrbitToEngine(orbitId, layer);
       });
 
-      // Apply patterns safely (no crash if missing API)
-      Object.entries(nextOrbitState.orbitPatterns || {}).forEach(([oid, isOn]) => {
-        setOrbitPatternStateSafe(oid, !!isOn);
+      // ✅ patterns (SAFE)
+      Object.entries(nextOrbitState.orbitPatterns || {}).forEach(
+        ([oid, isOn]) => {
+          setOrbitPatternStateSafe(oid, !!isOn);
+        }
+      );
+
+      // ✅ If your engine has a voice-preset setter, apply it per-orbit (optional)
+      Object.entries(nextOrbitState.orbitLayers).forEach(([orbitId, layer]) => {
+        const voicePreset =
+          layer.voicePresetId && ORBIT_VOICE_PRESETS
+            ? ORBIT_VOICE_PRESETS[layer.voicePresetId]
+            : null;
+
+        if (
+          voicePreset &&
+          typeof omseEngine.setOrbitVoicePreset === "function"
+        ) {
+          omseEngine.setOrbitVoicePreset(orbitId, voicePreset);
+        }
       });
     }
   };
@@ -486,15 +497,15 @@ function App() {
         applyCoreLayerToEngine(layerId, layer);
       });
 
-      if (scene) omseEngine.applyOrbitScenePreset(scene, ORBIT_VOICE_PRESETS);
-
       Object.entries(nextOrbitState.orbitLayers).forEach(([orbitId, layer]) => {
         applyOrbitToEngine(orbitId, layer);
       });
 
-      Object.entries(nextOrbitState.orbitPatterns || {}).forEach(([oid, isOn]) => {
-        setOrbitPatternStateSafe(oid, !!isOn);
-      });
+      Object.entries(nextOrbitState.orbitPatterns || {}).forEach(
+        ([oid, isOn]) => {
+          setOrbitPatternStateSafe(oid, !!isOn);
+        }
+      );
     }
   };
 
@@ -510,14 +521,31 @@ function App() {
     setOrbitPatterns(nextOrbitState.orbitPatterns);
 
     if (engineLive && scene) {
-      omseEngine.applyOrbitScenePreset(scene, ORBIT_VOICE_PRESETS);
-
+      // ✅ Engine: apply normalized layer state
       Object.entries(nextOrbitState.orbitLayers).forEach(([orbitId, layer]) => {
         applyOrbitToEngine(orbitId, layer);
       });
 
-      Object.entries(nextOrbitState.orbitPatterns || {}).forEach(([oid, isOn]) => {
-        setOrbitPatternStateSafe(oid, !!isOn);
+      // ✅ patterns (SAFE)
+      Object.entries(nextOrbitState.orbitPatterns || {}).forEach(
+        ([oid, isOn]) => {
+          setOrbitPatternStateSafe(oid, !!isOn);
+        }
+      );
+
+      // ✅ optional: apply orbit voice preset if engine supports it
+      Object.entries(nextOrbitState.orbitLayers).forEach(([orbitId, layer]) => {
+        const voicePreset =
+          layer.voicePresetId && ORBIT_VOICE_PRESETS
+            ? ORBIT_VOICE_PRESETS[layer.voicePresetId]
+            : null;
+
+        if (
+          voicePreset &&
+          typeof omseEngine.setOrbitVoicePreset === "function"
+        ) {
+          omseEngine.setOrbitVoicePreset(orbitId, voicePreset);
+        }
       });
     }
   };
@@ -688,7 +716,9 @@ function App() {
               />
             </div>
 
-            <section className="instrument-row-bottom">{/* future row */}</section>
+            <section className="instrument-row-bottom">
+              {/* future row */}
+            </section>
           </div>
         </div>
       </div>
