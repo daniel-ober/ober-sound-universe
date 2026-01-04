@@ -80,14 +80,9 @@ function buildOrbitSynthFromPreset(voicePreset) {
 /**
  * Ober MotionSynth Engine (OMSE)
  *
- * Key concept:
  * ✅ TRUE POLYRHYTHM MODEL
- * - Master defines a "cycle" length (in measures) and master time signature (defines what 1 measure means).
- * - Each Orbit "timeSig" uses its NUMERATOR as "pulses per master cycle".
- *   Example: master = 1 measure of 4/4. orbitA = 3/4 => 3 pulses per cycle.
- *   That feels like its own tempo because the orbit interval becomes (cycleSeconds / 3).
- *
- * This is different than polymeter (shared grid with different barlines).
+ * - Master defines "cycle" length in measures + master time signature (defines what 1 measure means)
+ * - Each Orbit "timeSig" uses its NUMERATOR as pulses per master cycle
  */
 class OMSEEngine {
   constructor() {
@@ -133,6 +128,8 @@ class OMSEEngine {
       orbitC: { enabled: true, voicePresetId: null },
     };
 
+    // ✅ ARP “pattern” is assumed always running.
+    // arp:"off" means “no arp output”, but the loop is still active.
     this.orbitMotion = {
       orbitA: { timeSig: "4/4", arp: "off", rate: "8n", step: 0 },
       orbitB: { timeSig: "4/4", arp: "off", rate: "8n", step: 0 },
@@ -171,6 +168,9 @@ class OMSEEngine {
 
     // Ensure per-orbit intervals match master cycle
     this._refreshAllOrbitIntervals();
+
+    // ✅ Start orbit loops immediately (they only produce sound when allowed)
+    this._ensureOrbitLoopsRunning();
 
     this.initialized = true;
   }
@@ -241,6 +241,13 @@ class OMSEEngine {
     const orbit = this.orbits[voiceId];
     if (!orbit) return;
 
+    // ✅ CRITICAL FIX:
+    // If orbit is disabled OR muted OR effectively at 0 gain, do not sound on keydown.
+    const enabled = !!this.orbitConfig?.[voiceId]?.enabled;
+    if (!enabled) return;
+    if (orbit.muted) return;
+    if ((orbit.gain?.gain?.value ?? 0) <= 0.0001) return;
+
     if (!this.activeNotes[voiceId].has(note)) {
       orbit.synth.triggerAttack(note, undefined, velocity);
       this.activeNotes[voiceId].add(note);
@@ -282,10 +289,8 @@ class OMSEEngine {
       });
     });
 
-    // patterns may run, but will NOT produce arp notes unless notes are held
-    this.startOrbitPattern("orbitA");
-    this.startOrbitPattern("orbitB");
-    this.startOrbitPattern("orbitC");
+    // ✅ loops are always running; arp output depends on held core notes + arp setting
+    this._ensureOrbitLoopsRunning();
   }
 
   // ----- Core layer controls -----
@@ -313,8 +318,11 @@ class OMSEEngine {
     const v = clamp01(normalized);
     orbit.baseGain = v;
 
-    if (orbit.gain?.gain?.rampTo) orbit.gain.gain.rampTo(orbit.muted ? 0 : v, 0.03);
-    else orbit.gain.gain.value = orbit.muted ? 0 : v;
+    const enabled = !!this.orbitConfig?.[orbitId]?.enabled;
+    const target = !enabled ? 0 : orbit.muted ? 0 : v;
+
+    if (orbit.gain?.gain?.rampTo) orbit.gain.gain.rampTo(target, 0.03);
+    else orbit.gain.gain.value = target;
   }
 
   setOrbitMute(orbitId, muted) {
@@ -322,7 +330,9 @@ class OMSEEngine {
     if (!orbit) return;
     orbit.muted = !!muted;
 
-    const target = orbit.muted ? 0 : orbit.baseGain;
+    const enabled = !!this.orbitConfig?.[orbitId]?.enabled;
+    const target = !enabled ? 0 : orbit.muted ? 0 : orbit.baseGain;
+
     if (orbit.gain?.gain?.rampTo) orbit.gain.gain.rampTo(target, 0.03);
     else orbit.gain.gain.value = target;
   }
@@ -343,22 +353,19 @@ class OMSEEngine {
       enabled: !!enabled,
     };
 
-    if (!enabled) {
-      this.setOrbitPatternState(orbitId, false);
-      const orbit = this.orbits[orbitId];
-      if (orbit) {
-        if (orbit.gain?.gain?.rampTo) orbit.gain.gain.rampTo(0, 0.03);
-        else orbit.gain.gain.value = 0;
-      }
-      return;
-    }
-
     const orbit = this.orbits[orbitId];
-    if (orbit) {
-      const target = orbit.muted ? 0 : orbit.baseGain;
-      if (orbit.gain?.gain?.rampTo) orbit.gain.gain.rampTo(target, 0.03);
-      else orbit.gain.gain.value = target;
-    }
+    if (!orbit) return;
+
+    // ✅ Always-running loops:
+    // enabled=false: silence gain to 0 (and loop output gates anyway)
+    // enabled=true: restore gain (or keep at 0 if muted)
+    const target = !enabled ? 0 : orbit.muted ? 0 : orbit.baseGain;
+
+    if (orbit.gain?.gain?.rampTo) orbit.gain.gain.rampTo(target, 0.03);
+    else orbit.gain.gain.value = target;
+
+    // ✅ Ensure loops are running when enabled (no pattern toggle in UI)
+    this._ensureOrbitLoopsRunning();
   }
 
   /**
@@ -377,7 +384,6 @@ class OMSEEngine {
       ...(changed ? { step: 0 } : {}),
     };
 
-    // interval depends on master cycle seconds / numerator
     this._refreshOrbitInterval(orbitId);
   }
 
@@ -405,26 +411,7 @@ class OMSEEngine {
   }
 
   /**
-   * ✅ Only start/stop patterns through this.
-   */
-  setOrbitPatternState(orbitId, isOn) {
-    if (!this.initialized) return;
-
-    const enabled = !!this.orbitConfig?.[orbitId]?.enabled;
-    const loop = this.orbitPatterns[orbitId];
-    if (!loop) return;
-
-    const shouldStart = !!isOn && enabled;
-
-    if (shouldStart) {
-      if (loop.state !== "started") loop.start(0);
-    } else {
-      if (loop.state === "started") loop.stop();
-    }
-  }
-
-  /**
-   * Swap orbit synth based on ORBIT_VOICE_PRESETS
+   * ✅ Swap orbit synth based on ORBIT_VOICE_PRESETS
    * Preserves orbit panner/gain/meter chain.
    */
   setOrbitVoicePreset(orbitId, voicePreset) {
@@ -468,14 +455,6 @@ class OMSEEngine {
     }
   }
 
-  // Back-compat wrappers
-  startOrbitPattern(orbitId) {
-    this.setOrbitPatternState(orbitId, true);
-  }
-  stopOrbitPattern(orbitId) {
-    this.setOrbitPatternState(orbitId, false);
-  }
-
   // ----- Meter getters (0–1) -----
 
   getMasterLevel() {
@@ -514,6 +493,10 @@ class OMSEEngine {
 
   /**
    * ✅ Apply a full Orbit Master Preset
+   *
+   * IMPORTANT:
+   * - "Pattern" is assumed ALWAYS ON while an orbit is enabled.
+   * - We do not use cfg.motion.patternOn anymore.
    */
   applyOrbitScenePreset(scene, voicePresetMap) {
     if (!this.initialized || !scene?.orbits) return;
@@ -522,6 +505,7 @@ class OMSEEngine {
       const cfg = scene.orbits?.[orbitId];
       if (!cfg) return;
 
+      // enabled controls sound gate + UI "ON/OFF"
       this.setOrbitEnabled(orbitId, !!cfg.enabled);
 
       const voiceId = cfg.voicePresetId || null;
@@ -542,12 +526,13 @@ class OMSEEngine {
       this.setOrbitTimeSig(orbitId, motion.timeSig || "4/4");
       this.setOrbitArp(orbitId, motion.arp || "off");
       this.setOrbitRate(orbitId, motion.rate || "8n");
-
-      this.setOrbitPatternState(orbitId, !!motion.patternOn);
     });
 
     // Ensure intervals match master cycle after applying scene
     this._refreshAllOrbitIntervals();
+
+    // ✅ Always keep loops running; output is gated by enabled/muted/arp/core-held-notes
+    this._ensureOrbitLoopsRunning();
   }
 
   // ---------- INTERNAL ----------
@@ -600,9 +585,17 @@ class OMSEEngine {
     const cycleSeconds = this._getMasterCycleSeconds();
     const pulses = Math.max(1, steps);
 
-    const intervalSeconds = cycleSeconds / pulses;
+    loop.interval = cycleSeconds / pulses;
+  }
 
-    loop.interval = intervalSeconds;
+  _ensureOrbitLoopsRunning() {
+    if (!this.initialized) return;
+
+    ["orbitA", "orbitB", "orbitC"].forEach((orbitId) => {
+      const loop = this.orbitPatterns?.[orbitId];
+      if (!loop) return;
+      if (loop.state !== "started") loop.start(0);
+    });
   }
 
   _buildGraph() {
@@ -645,7 +638,7 @@ class OMSEEngine {
       airy: true,
     });
 
-    // ORBITS
+    // ORBITS (fallback voices; scene presets can swap these)
     this.orbits.orbitA = this._buildOrbitVoice({
       type: "square",
       pan: -0.25,
@@ -731,13 +724,17 @@ class OMSEEngine {
 
   /**
    * Orbit ARP loop (true polyrhythm model):
-   * - Loop interval is masterCycleSeconds / numerator (set in _refreshOrbitInterval)
-   * - step wraps at numerator (cycle length)
+   * - Loop interval is masterCycleSeconds / numerator
+   * - step wraps at numerator
    * - rate controls note duration
    *
-   * ✅ IMPORTANT CHANGE:
-   * - NO autoplay notes.
-   * - Only plays when there are held/sustained CORE notes.
+   * ✅ Always running.
+   * ✅ Only outputs when:
+   *   - orbit enabled
+   *   - orbit not muted
+   *   - orbit gain > 0
+   *   - arp != "off"
+   *   - there are HELD core notes (no autoplay)
    */
   _makeOrbitArpLoop(orbitId) {
     const loop = new Tone.Loop((time) => {
@@ -747,13 +744,13 @@ class OMSEEngine {
       const enabled = !!this.orbitConfig?.[orbitId]?.enabled;
       if (!enabled) return;
 
-      if (orbit.muted || orbit.gain.gain.value <= 0.0001) return;
+      if (orbit.muted) return;
+      if ((orbit.gain?.gain?.value ?? 0) <= 0.0001) return;
 
       const motion = this.orbitMotion?.[orbitId] || {};
       const arp = motion.arp || "off";
       if (arp === "off") return;
 
-      // ✅ NO AUTOPLAY: require held core notes
       const chord = Array.from(this.activeNotes.core || []);
       if (!chord.length) return;
 

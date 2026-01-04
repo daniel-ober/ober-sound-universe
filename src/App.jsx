@@ -208,6 +208,43 @@ function App() {
     omseEngine.setOrbitRate(orbitId, layer.rate || "8n");
   };
 
+  /**
+   * ✅ FIX: your engine doesn't currently expose `setOrbitPatternState`.
+   * This wrapper prevents hard crashes and supports alternate method names
+   * if your engine uses a different API.
+   */
+  const warnedPatternFnRef = useRef(false);
+  const setOrbitPatternStateSafe = (orbitId, isOn) => {
+    const v = !!isOn;
+
+    if (typeof omseEngine.setOrbitPatternState === "function") {
+      omseEngine.setOrbitPatternState(orbitId, v);
+      return;
+    }
+
+    // common alternates (if your engine chose different naming)
+    if (typeof omseEngine.setOrbitPattern === "function") {
+      omseEngine.setOrbitPattern(orbitId, v);
+      return;
+    }
+    if (typeof omseEngine.setOrbitPatternEnabled === "function") {
+      omseEngine.setOrbitPatternEnabled(orbitId, v);
+      return;
+    }
+    if (typeof omseEngine.setOrbitPatternOn === "function") {
+      omseEngine.setOrbitPatternOn(orbitId, v);
+      return;
+    }
+
+    // no-op + warn once (prevents app crash)
+    if (!warnedPatternFnRef.current) {
+      warnedPatternFnRef.current = true;
+      console.warn(
+        "[OMSE] No orbit-pattern setter found on engine. Expected one of: setOrbitPatternState | setOrbitPattern | setOrbitPatternEnabled | setOrbitPatternOn"
+      );
+    }
+  };
+
   const panicAllNotesOff = () => {
     if (!audioReady) return;
 
@@ -232,9 +269,9 @@ function App() {
     // IMPORTANT: clear any held notes first (prevents latch on re-power)
     panicAllNotesOff();
 
-    // Stop all orbit patterns
+    // Stop all orbit patterns (SAFE)
     Object.keys(orbitPatterns || {}).forEach((orbitId) => {
-      omseEngine.setOrbitPatternState(orbitId, false);
+      setOrbitPatternStateSafe(orbitId, false);
     });
 
     // Mute all orbits
@@ -266,9 +303,9 @@ function App() {
       applyOrbitToEngine(orbitId, layer);
     });
 
-    // patterns
+    // patterns (SAFE)
     Object.entries(orbitPatterns || {}).forEach(([orbitId, isOn]) => {
-      omseEngine.setOrbitPatternState(orbitId, !!isOn);
+      setOrbitPatternStateSafe(orbitId, !!isOn);
     });
   };
 
@@ -288,7 +325,7 @@ function App() {
   useEffect(() => {
     if (!engineLive) return;
     Object.entries(orbitPatterns || {}).forEach(([orbitId, isOn]) => {
-      omseEngine.setOrbitPatternState(orbitId, !!isOn);
+      setOrbitPatternStateSafe(orbitId, !!isOn);
     });
   }, [engineLive, orbitPatterns]);
 
@@ -400,6 +437,11 @@ function App() {
         omseEngine.setOrbitArp(orbitId, layer.arp || "off");
         omseEngine.setOrbitRate(orbitId, layer.rate || "8n");
       });
+
+      // Apply patterns safely (no crash if missing API)
+      Object.entries(nextOrbitState.orbitPatterns || {}).forEach(([oid, isOn]) => {
+        setOrbitPatternStateSafe(oid, !!isOn);
+      });
     }
   };
 
@@ -449,6 +491,10 @@ function App() {
       Object.entries(nextOrbitState.orbitLayers).forEach(([orbitId, layer]) => {
         applyOrbitToEngine(orbitId, layer);
       });
+
+      Object.entries(nextOrbitState.orbitPatterns || {}).forEach(([oid, isOn]) => {
+        setOrbitPatternStateSafe(oid, !!isOn);
+      });
     }
   };
 
@@ -468,6 +514,10 @@ function App() {
 
       Object.entries(nextOrbitState.orbitLayers).forEach(([orbitId, layer]) => {
         applyOrbitToEngine(orbitId, layer);
+      });
+
+      Object.entries(nextOrbitState.orbitPatterns || {}).forEach(([oid, isOn]) => {
+        setOrbitPatternStateSafe(oid, !!isOn);
       });
     }
   };
