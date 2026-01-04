@@ -65,7 +65,8 @@ function isInCuratedList(sig) {
 }
 
 const ARP_OPTIONS = [
-  { id: "off", label: "Off" },
+  // NOTE: ARP is assumed ALWAYS ON for each orbit.
+  // This dropdown selects the ARP TYPE (behavior), not on/off.
   { id: "up", label: "Up" },
   { id: "down", label: "Down" },
   { id: "upDown", label: "Up / Down" },
@@ -106,10 +107,10 @@ function getOrbitState(orbitLayers, orbitId) {
   const base = orbitLayers?.[orbitId] || {};
   return {
     gain: typeof base.gain === "number" ? base.gain : 0,
-    muted: !!base.muted,
     pan: typeof base.pan === "number" ? base.pan : 0,
     timeSig: base.timeSig || "4/4",
-    arp: base.arp || "off",
+    // Default arp type should be ON by default — pick a sane musical default.
+    arp: base.arp || "up",
     enabled: typeof base.enabled === "boolean" ? base.enabled : true,
   };
 }
@@ -142,7 +143,6 @@ export function OrbitPanel({
 
   // current orbit state (from App / Firestore)
   orbitLayers,
-  orbitPatterns,
 
   // orbit-scene preset (single source of truth)
   orbitSceneId,
@@ -151,8 +151,6 @@ export function OrbitPanel({
 
   // audio wired actions
   onOrbitGainChange,
-  onOrbitMuteToggle,
-  onOrbitPatternToggle,
   onOrbitPanChange,
 
   // planning controls (wire later if you want; UI still works)
@@ -177,9 +175,9 @@ export function OrbitPanel({
   });
 
   const [localArp, setLocalArp] = useState({
-    orbitA: "off",
-    orbitB: "off",
-    orbitC: "off",
+    orbitA: "up",
+    orbitB: "up",
+    orbitC: "up",
   });
 
   const [localEnabled, setLocalEnabled] = useState({
@@ -197,9 +195,9 @@ export function OrbitPanel({
     }));
 
     setLocalArp((prev) => ({
-      orbitA: syncIfStillDefault(prev.orbitA, derived.orbitA.arp, "off"),
-      orbitB: syncIfStillDefault(prev.orbitB, derived.orbitB.arp, "off"),
-      orbitC: syncIfStillDefault(prev.orbitC, derived.orbitC.arp, "off"),
+      orbitA: syncIfStillDefault(prev.orbitA, derived.orbitA.arp, "up"),
+      orbitB: syncIfStillDefault(prev.orbitB, derived.orbitB.arp, "up"),
+      orbitC: syncIfStillDefault(prev.orbitC, derived.orbitC.arp, "up"),
     }));
 
     setLocalEnabled((prev) => ({
@@ -246,7 +244,7 @@ export function OrbitPanel({
           <h3 className="orbits-title">ORBIT VOICES</h3>
           <p className="orbits-subtitle">
             Orbit presets define the combined motion: which orbits are enabled,
-            their time signatures, arp patterns, and mix.
+            their time signatures, arp type, and mix.
           </p>
 
           {/* Small musical clarification */}
@@ -300,7 +298,11 @@ export function OrbitPanel({
 
             <div className="orbits-rack-hint">
               <span className="orbits-hint-dot" />
-              <span>{onOrbitSceneChange ? "Orbit preset wired" : "UI ready (wire orbit preset selection in App)"}</span>
+              <span>
+                {onOrbitSceneChange
+                  ? "Orbit preset wired"
+                  : "UI ready (wire orbit preset selection in App)"}
+              </span>
             </div>
           </div>
         </div>
@@ -312,11 +314,10 @@ export function OrbitPanel({
           const state = getOrbitState(orbitLayers, id);
           const gain = clamp(state.gain, 0, 100);
           const pan = clamp(state.pan, -1, 1);
-          const patternOn = !!orbitPatterns?.[id];
 
           // planned (always selectable)
           const timeSigValue = localTimeSig?.[id] ?? derived?.[id]?.timeSig ?? "4/4";
-          const arpValue = localArp?.[id] ?? derived?.[id]?.arp ?? "off";
+          const arpValue = localArp?.[id] ?? derived?.[id]?.arp ?? "up";
           const enabledValue =
             typeof localEnabled?.[id] === "boolean" ? localEnabled[id] : true;
 
@@ -337,13 +338,14 @@ export function OrbitPanel({
                   <div className="orbit-channel-nameRow">
                     <div className="orbit-channel-name">{label}</div>
 
+                    {/* Single control for each orbit voice: on/off == mute/unmute */}
                     <button
                       type="button"
                       className={"orbit-enable" + (enabledValue ? " on" : " off")}
                       onClick={() => handleEnabledToggle(id)}
-                      title="Enable/disable this orbit in the preset"
+                      title="Mute/unmute this orbit voice"
                     >
-                      {enabledValue ? "ENABLED" : "DISABLED"}
+                      {enabledValue ? "ON" : "MUTED"}
                     </button>
                   </div>
 
@@ -356,17 +358,6 @@ export function OrbitPanel({
                 </div>
               </div>
 
-              {/* Pattern Toggle (audio action) */}
-              <button
-                type="button"
-                className={"orbit-pill" + (patternOn ? " orbit-pill--on" : " orbit-pill--off")}
-                onClick={() => onOrbitPatternToggle?.(id)}
-                disabled={!audioReady || !onOrbitPatternToggle}
-                title={audioReady ? "Toggle pattern" : "Initialize audio first"}
-              >
-                {patternOn ? "PATTERN: ON" : "PATTERN: OFF"}
-              </button>
-
               {/* Planning controls (always enabled) */}
               <div className="orbit-channel-fields">
                 <label className="orbit-mini-field">
@@ -377,7 +368,6 @@ export function OrbitPanel({
                     onChange={(e) => handleTimeSigChange(id, e.target.value)}
                     title="Denominator labels subdivision; numerator sets pulses per master cycle (OMSE)"
                   >
-                    {/* If current value isn’t curated (legacy/custom), keep it selectable */}
                     {!curatedHas && (
                       <option key={`custom-${timeSigValue}`} value={timeSigValue}>
                         {`Custom: ${formatTimeSigLabel(timeSigValue)}`}
@@ -397,11 +387,12 @@ export function OrbitPanel({
                 </label>
 
                 <label className="orbit-mini-field">
-                  <span>ARP</span>
+                  <span>ARP TYPE</span>
                   <select
                     className="orbits-select orbits-select--micro"
                     value={arpValue}
                     onChange={(e) => handleArpChange(id, e.target.value)}
+                    title="Select arpeggiator behavior for this orbit (ARP is always on)"
                   >
                     {ARP_OPTIONS.map((p) => (
                       <option key={p.id} value={p.id}>
@@ -453,15 +444,6 @@ export function OrbitPanel({
                     disabled={!audioReady || !onOrbitPanChange}
                   />
                 </div>
-
-                <button
-                  type="button"
-                  className={"orbit-mute" + (state.muted ? " orbit-mute--active" : "")}
-                  onClick={() => onOrbitMuteToggle?.(id)}
-                  disabled={!audioReady || !onOrbitMuteToggle}
-                >
-                  {state.muted ? "MUTED" : "MUTE"}
-                </button>
               </div>
             </article>
           );
