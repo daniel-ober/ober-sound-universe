@@ -1,0 +1,132 @@
+/* src/components/TempoKnob.css */
+
+.tempo-knob {
+  width: 96px;
+  user-select: none;
+  cursor: ns-resize;
+}
+
+.tempo-knob.disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.tempo-knob-face {
+  width: 96px;
+  height: 96px;
+  border-radius: 999px;
+  position: relative;
+
+  background:
+    radial-gradient(circle at 35% 25%, rgba(255,255,255,0.10), transparent 45%),
+    radial-gradient(circle at 60% 70%, rgba(140,190,255,0.10), transparent 55%),
+    linear-gradient(180deg, rgba(24,28,46,0.90), rgba(8,10,18,0.95));
+
+  border: 1px solid rgba(255,255,255,0.10);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.08),
+    inset 0 -18px 26px rgba(0,0,0,0.55),
+    0 16px 34px rgba(0,0,0,0.70);
+}
+
+.tempo-knob-ring {
+  position: absolute;
+  inset: 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: radial-gradient(circle at 30% 30%, rgba(0,0,0,0.35), rgba(0,0,0,0.75));
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.65);
+}
+
+.tempo-knob-ticks {
+  position: absolute;
+  inset: 6px;
+  border-radius: 999px;
+  background:
+    conic-gradient(
+      from -135deg,
+      rgba(255,255,255,0.10) 0deg,
+      rgba(255,255,255,0.00) 10deg,
+      rgba(255,255,255,0.10) 20deg,
+      rgba(255,255,255,0.00) 30deg,
+      rgba(255,255,255,0.10) 40deg,
+      rgba(255,255,255,0.00) 50deg,
+      rgba(255,255,255,0.10) 60deg,
+      rgba(255,255,255,0.00) 70deg,
+      rgba(255,255,255,0.10) 80deg,
+      rgba(255,255,255,0.00) 90deg,
+      rgba(255,255,255,0.10) 100deg,
+      rgba(255,255,255,0.00) 110deg,
+      rgba(255,255,255,0.10) 120deg,
+      rgba(255,255,255,0.00) 130deg,
+      rgba(255,255,255,0.10) 140deg,
+      rgba(255,255,255,0.00) 150deg,
+      rgba(255,255,255,0.10) 160deg,
+      rgba(255,255,255,0.00) 170deg,
+      rgba(255,255,255,0.10) 180deg,
+      rgba(255,255,255,0.00) 190deg,
+      rgba(255,255,255,0.10) 200deg,
+      rgba(255,255,255,0.00) 210deg,
+      rgba(255,255,255,0.10) 220deg,
+      rgba(255,255,255,0.00) 230deg,
+      rgba(255,255,255,0.10) 240deg,
+      rgba(255,255,255,0.00) 250deg,
+      rgba(255,255,255,0.10) 260deg,
+      rgba(255,255,255,0.00) 270deg
+    );
+  opacity: 0.55;
+  filter: blur(0.2px);
+}
+
+.tempo-knob-indicator {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  pointer-events: none;
+}
+
+.tempo-knob-indicator span {
+  position: absolute;
+  left: 50%;
+  top: 12px;
+  width: 6px;
+  height: 14px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(245,226,156,0.98), rgba(120,190,255,0.85));
+  box-shadow:
+    0 0 0 1px rgba(0,0,0,0.65),
+    0 0 14px rgba(255, 220, 140, 0.22);
+}
+
+.tempo-knob-readout {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  font-size: 18px;
+  font-weight: 600;
+  color: rgba(235,242,255,0.92);
+  text-shadow: 0 10px 22px rgba(0,0,0,0.75);
+  letter-spacing: 0.02em;
+}
+
+.tempo-knob-minmax {
+  margin-top: 6px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: rgba(160, 178, 214, 0.75);
+}
+
+.tempo-knob.dragging .tempo-knob-face {
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.10),
+    inset 0 -18px 26px rgba(0,0,0,0.55),
+    0 18px 40px rgba(0,0,0,0.75),
+    0 0 18px rgba(150, 225, 255, 0.18);
+  border-color: rgba(150, 225, 255, 0.20);
+}

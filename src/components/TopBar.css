@@ -1,286 +1,436 @@
 /* src/components/TopBar.css */
 
-/* existing capsule styles (kept, but extended for master controls) */
+/* =========================================================
+   TOPBAR — unified rail + NO spill / bleed
+   + add per-section padding/cushion
+   ========================================================= */
 
 .topbar-shell {
+  position: relative;
   width: 100%;
-  max-width: 1180px;
-  padding: 0 18px;
-  box-sizing: border-box;
-  margin: 0 auto 10px;
+  max-width: 100%;
+  overflow: hidden; /* ✅ prevents anything from bleeding outside */
 }
 
-.topbar-inner {
-  border-radius: 999px;
-  padding: 11px 22px;
+/* ONE unified rail */
+.topbar-rail {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  border-radius: 22px;
+  padding: 12px 16px; /* ✅ slightly more outer cushion */
+
+  display: grid;
+  grid-template-columns: 1.05fr 1.6fr 2.2fr 0.95fr;
+  gap: 14px;
+  align-items: stretch; /* ✅ let section pads feel even */
+
   background:
-    radial-gradient(circle at 0 0, rgba(151, 199, 255, 0.22), transparent 60%),
-    radial-gradient(circle at 100% 0, rgba(255, 190, 163, 0.16), transparent 58%),
-    linear-gradient(135deg, rgba(9, 12, 26, 0.98), rgba(5, 7, 20, 0.98));
-  border: 1px solid rgba(255, 255, 255, 0.04);
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.95);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
+    radial-gradient(circle at 10% 0%, rgba(140, 190, 255, 0.14), transparent 58%),
+    radial-gradient(circle at 90% 120%, rgba(255, 195, 150, 0.12), transparent 60%),
+    linear-gradient(180deg, rgba(10, 12, 20, 0.88), rgba(6, 8, 14, 0.94));
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.09),
+    inset 0 -18px 34px rgba(0, 0, 0, 0.58),
+    0 18px 54px rgba(0, 0, 0, 0.78);
+
+  overflow: hidden; /* ✅ clamps dropdown glow / inner effects */
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
 
-/* left: brand + galaxy */
-.topbar-left {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+/* Inner sheen */
+.topbar-rail::before {
+  content: "";
+  position: absolute;
+  inset: 7px;
+  border-radius: 18px;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.06),
+    transparent 40%,
+    rgba(0, 0, 0, 0.38) 100%
+  );
+  opacity: 0.95;
 }
 
-.topbar-product {
-  font-size: 10px;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: rgba(171, 187, 220, 0.92);
+/* =========================================================
+   ✅ SECTION CUSHION (the change you asked for)
+   Each column becomes a padded "cell"
+   ========================================================= */
+
+.topbar-brand,
+.topbar-preset,
+.topbar-output,
+.topbar-power {
+  position: relative;
+  z-index: 1;
+  min-width: 0; /* ✅ allows ellipsis instead of overflow */
+
+  padding: 10px 12px;          /* ✅ the cushion */
+  border-radius: 16px;         /* ✅ soft internal rounding */
+  background: rgba(0, 0, 0, 0.08); /* ✅ subtle cell separation */
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+    inset 0 -10px 18px rgba(0, 0, 0, 0.28);
 }
 
-.topbar-galaxy {
-  font-size: 11px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: rgba(238, 244, 255, 0.98);
-}
-
-/* center: helper + master controls */
-
-.topbar-center {
+/* Power column: keep right aligned but padded */
+.topbar-power {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  flex: 1;
-  min-width: 320px;
-}
-
-.topbar-helper {
-  font-size: 11px;
-  color: rgba(178, 196, 230, 0.9);
-}
-
-.topbar-master {
-  display: flex;
-  gap: 10px;
   align-items: flex-end;
-  flex-wrap: wrap;
+  justify-content: center;
 }
 
-.topbar-master-block {
-  padding: 8px 10px;
-  border-radius: 14px;
-  background: rgba(10, 14, 30, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
-}
-
-.topbar-master-block.compact {
-  padding: 8px 10px;
-}
-
-.topbar-master-label {
-  font-size: 10px;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: rgba(171, 187, 220, 0.86);
-  margin-bottom: 6px;
-}
-
-/* BPM controls */
-.topbar-bpm-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.topbar-bpm-range {
-  width: 170px;
-}
-
-.topbar-bpm-input {
-  width: 74px;
-  border-radius: 10px;
-  padding: 6px 8px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(16, 20, 38, 0.88);
-  color: rgba(231, 240, 255, 0.96);
-  outline: none;
-  font-size: 12px;
-}
-
-/* time signature controls */
-.topbar-sig-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.topbar-sig-select {
-  border-radius: 10px;
-  padding: 6px 10px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(16, 20, 38, 0.88);
-  color: rgba(231, 240, 255, 0.96);
-  outline: none;
-  font-size: 12px;
-}
-
-.topbar-pill {
-  border-radius: 999px;
-  padding: 6px 10px;
-  font-size: 10px;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(16, 20, 38, 0.88);
-  color: rgba(211, 222, 246, 0.95);
-  cursor: pointer;
-  transition: background var(--transition-fast), box-shadow var(--transition-fast),
-    transform var(--transition-fast), border-color var(--transition-fast);
-}
-
-.topbar-pill:hover {
-  background: rgba(26, 34, 64, 0.98);
-  box-shadow: 0 0 12px rgba(152, 196, 255, 0.55);
-  border-color: rgba(255, 255, 255, 0.09);
-  transform: translateY(-0.5px);
-}
-
-.topbar-pill.locked {
+/* separator line between columns (adjusted for padding) */
+.topbar-brand::after,
+.topbar-preset::after,
+.topbar-output::after {
+  content: "";
+  position: absolute;
+  top: 10px;
+  right: -7px;
+  width: 1px;
+  height: calc(100% - 20px);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.02),
+    rgba(255, 255, 255, 0.08),
+    rgba(255, 255, 255, 0.02)
+  );
   opacity: 0.9;
 }
 
-.topbar-pill.unlocked {
-  box-shadow: 0 0 10px rgba(255, 210, 140, 0.35);
-}
+/* =========================================================
+   TYPO / LABELS
+   ========================================================= */
 
-.topbar-pill.reset {
-  background: rgba(28, 20, 20, 0.7);
-}
-
-/* cycle controls */
-.topbar-cycle-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.topbar-cycle-hint {
-  font-size: 11px;
-  color: rgba(178, 196, 230, 0.88);
-}
-
-.topbar-cycle-input {
-  width: 70px;
-  border-radius: 10px;
-  padding: 6px 8px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(16, 20, 38, 0.88);
-  color: rgba(231, 240, 255, 0.96);
-  outline: none;
-  font-size: 12px;
-}
-
-.topbar-cycle-sub {
-  margin-top: 6px;
+.topbar-eyebrow,
+.topbar-label,
+.topbar-output-label,
+.topbar-mini-label {
   font-size: 10px;
-  color: rgba(171, 187, 220, 0.72);
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: rgba(195, 212, 245, 0.92);
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.55);
 }
 
-/* right: buttons + meters */
-.topbar-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+.topbar-eyebrow {
+  margin-bottom: 4px;
 }
 
-/* generic pill buttons */
-.topbar-btn {
+.topbar-title {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.20em;
+  text-transform: uppercase;
+  color: rgba(246, 250, 255, 0.98);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow:
+    0 1px 12px rgba(0, 0, 0, 0.65),
+    0 0 12px rgba(120, 190, 255, 0.10);
+}
+
+/* =========================================================
+   PRESET
+   ========================================================= */
+
+.topbar-label {
+  margin-bottom: 6px;
+}
+
+.topbar-select {
+  width: 100%;
+  height: 32px;
   border-radius: 999px;
-  padding: 7px 14px;
+  padding: 0 14px;
+
+  background: rgba(6, 8, 14, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: rgba(248, 252, 255, 0.96);
+  outline: none;
+
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.55);
+
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topbar-select:disabled {
+  opacity: 0.5;
+}
+
+.topbar-preset-hint {
+  margin-top: 6px;
+  min-width: 0;
+}
+
+.topbar-hint-1,
+.topbar-hint-2 {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topbar-hint-1 {
   font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  background: rgba(16, 20, 38, 0.98);
-  color: rgba(211, 222, 246, 0.98);
-  cursor: pointer;
-  transition: background var(--transition-fast), box-shadow var(--transition-fast),
-    transform var(--transition-fast), border-color var(--transition-fast);
+  font-weight: 800;
+  color: rgba(236, 244, 255, 0.95);
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.65);
 }
 
-.topbar-btn:hover {
-  background: rgba(26, 34, 64, 0.98);
-  box-shadow: 0 0 12px rgba(152, 196, 255, 0.7);
-  border-color: rgba(255, 255, 255, 0.08);
-  transform: translateY(-0.5px);
+.topbar-hint-2 {
+  margin-top: 2px;
+  font-size: 11px;
+  color: rgba(175, 195, 235, 0.88);
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.6);
 }
 
-.topbar-btn.primary {
-  background: linear-gradient(135deg, #ffffff, #c2e5ff);
-  color: #131428;
-  font-weight: 600;
-  box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.7),
-    0 0 22px rgba(155, 220, 255, 0.9);
-}
+/* =========================================================
+   OUTPUT / CLOCK
+   ========================================================= */
 
-.topbar-btn.primary:hover {
-  background: linear-gradient(135deg, #ffffff, #e0f2ff);
-}
-
-.topbar-btn.disabled {
-  opacity: 0.55;
-  cursor: default;
-  box-shadow: none;
-}
-
-/* output meters cluster */
-.topbar-output {
+.topbar-output-head {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  margin-bottom: 6px;
 }
 
-.topbar-output-label {
+.topbar-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: rgba(140, 160, 190, 0.35);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.75);
+}
+
+.topbar-dot.ok {
+  background: rgba(120, 255, 205, 0.95);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.78),
+    0 0 16px rgba(120, 255, 205, 0.28);
+}
+
+.topbar-meta {
+  margin-left: auto;
+  display: flex;
+  gap: 12px;
   font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  letter-spacing: 0.16em;
-  color: rgba(171, 187, 220, 0.85);
+  color: rgba(230, 240, 255, 0.92);
+  white-space: nowrap;
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.7);
 }
 
-.topbar-output-spectrum {
-  width: 120px;
+.topbar-output-body {
+  display: grid;
+  grid-template-columns: 84px 1fr;
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
 }
 
-.topbar-output-meter {
-  width: 80px;
+.topbar-knob {
+  display: grid;
+  place-items: center;
+}
+
+.topbar-controls {
+  min-width: 0;
+}
+
+.topbar-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+/* chips + selects */
+.topbar-chip {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(6, 8, 14, 0.72);
+  color: rgba(246, 250, 255, 0.94);
+
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+
+  cursor: pointer;
+  white-space: nowrap;
+
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.55);
+}
+
+.topbar-chip.locked {
+  border-color: rgba(255, 230, 160, 0.24);
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.55),
+    0 0 14px rgba(255, 220, 140, 0.12);
+}
+
+.topbar-chip:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.topbar-mini-select {
+  height: 28px;
+  border-radius: 10px;
+  padding: 0 10px;
+
+  background: rgba(6, 8, 14, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: rgba(246, 250, 255, 0.94);
+  outline: none;
+
+  min-width: 74px;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.10em;
+
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.55);
+}
+
+.topbar-mini-select:disabled {
+  opacity: 0.5;
+}
+
+/* =========================================================
+   POWER
+   ========================================================= */
+
+.topbar-power-btn {
+  height: 36px;
+  width: 100%;
+  padding: 0 16px;
+  border-radius: 999px;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: linear-gradient(180deg, rgba(12, 16, 30, 0.92), rgba(7, 9, 16, 0.96));
+  color: rgba(248, 252, 255, 0.96);
+
+  cursor: pointer;
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.62),
+    0 12px 28px rgba(0, 0, 0, 0.55);
+
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.65);
+}
+
+.topbar-power-btn.on {
+  border-color: rgba(130, 255, 205, 0.26);
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.62),
+    0 0 18px rgba(120, 255, 205, 0.12),
+    0 12px 28px rgba(0, 0, 0, 0.55);
+}
+
+.topbar-power-icon {
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0.95;
+}
+
+.topbar-power-text {
+  font-size: 12px;
+  font-weight: 950;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.topbar-power-hint {
+  font-size: 11px;
+  letter-spacing: 0.10em;
+  color: rgba(195, 212, 245, 0.88);
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.6);
+}
+
+/* =========================================================
+   ENGRAVE
+   ========================================================= */
+
+.topbar-engrave {
+  margin-top: 8px;
+  font-size: 11px;
+  letter-spacing: 0.10em;
+  color: rgba(185, 205, 240, 0.78);
+  text-align: center;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.65);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar-engrave strong {
+  color: rgba(238, 246, 255, 0.92);
+  font-weight: 950;
+}
+
+/* =========================================================
+   RESPONSIVE
+   ========================================================= */
+
+@media (max-width: 1200px) {
+  .topbar-rail {
+    grid-template-columns: 1.05fr 1.7fr 2.0fr 0.95fr;
+  }
 }
 
 @media (max-width: 980px) {
-  .topbar-inner {
-    border-radius: 26px;
-    align-items: flex-start;
+  .topbar-rail {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    align-items: stretch;
+  }
+
+  .topbar-brand::after,
+  .topbar-preset::after,
+  .topbar-output::after {
+    display: none;
+  }
+
+  .topbar-power {
+    align-items: stretch;
+  }
+
+  .topbar-power-hint {
+    text-align: center;
   }
 }
 
-@media (max-width: 780px) {
-  .topbar-inner {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 10px;
-    border-radius: 22px;
-  }
-
-  .topbar-right {
-    width: 100%;
-    justify-content: flex-start;
-    flex-wrap: wrap;
-  }
-
-  .topbar-bpm-range {
-    width: 190px;
+@media (max-width: 560px) {
+  .topbar-meta {
+    display: none;
   }
 }

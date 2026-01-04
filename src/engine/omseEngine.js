@@ -119,20 +119,12 @@ class OMSEEngine {
     };
 
     // Per-voice active note maps
-    // NOTE: For core, this Set is ALSO used as the "held/sustained notes" source
-    // for arps. That means: if empty => arps produce NO notes (no autoplay).
     this.activeNotes = {
       core: new Set(),
       orbitA: new Set(),
       orbitB: new Set(),
       orbitC: new Set(),
     };
-
-    // Sustain support (so arps can run when notes are sustained)
-    // - sustainDown: if true, releasing a key keeps it in core activeNotes
-    // - sustainLatched: notes released while sustain is down
-    this.sustainDown = false;
-    this.sustainLatched = new Set();
 
     // Orbit config + motion state
     this.orbitConfig = {
@@ -232,33 +224,6 @@ class OMSEEngine {
   }
 
   /**
-   * Sustain (optional)
-   * - If your UI/keyboard wires sustain pedal, call setSustain(true/false).
-   * - Arps will also treat sustained notes as "held" (because they remain in activeNotes.core).
-   */
-  setSustain(isDown) {
-    const next = !!isDown;
-    const prev = this.sustainDown;
-    this.sustainDown = next;
-
-    // Sustain released: release any notes that were latched and are not physically held anymore
-    if (prev && !next && this.initialized) {
-      for (const note of Array.from(this.sustainLatched)) {
-        // Only release if not currently held (defensive: core held notes are in activeNotes.core)
-        if (this.activeNotes.core.has(note)) {
-          // This note is only present due to sustain latch; remove + release
-          Object.values(this.core.layers).forEach((layer) => {
-            if (!layer) return;
-            layer.synth.triggerRelease(note);
-          });
-          this.activeNotes.core.delete(note);
-        }
-      }
-      this.sustainLatched.clear();
-    }
-  }
-
-  /**
    * Core / Orbit note control
    */
   noteOn(voiceId, note, velocity = 0.9) {
@@ -269,10 +234,6 @@ class OMSEEngine {
         if (!layer) return;
         layer.synth.triggerAttack(note, undefined, velocity);
       });
-
-      // If this was previously latched by sustain, unlatch it
-      this.sustainLatched.delete(note);
-
       this.activeNotes.core.add(note);
       return;
     }
@@ -291,13 +252,6 @@ class OMSEEngine {
 
     if (voiceId === "core") {
       if (!this.activeNotes.core.has(note)) return;
-
-      // If sustain is down, keep the note "held" for arp gating + audio sustain
-      if (this.sustainDown) {
-        this.sustainLatched.add(note);
-        return;
-      }
-
       Object.values(this.core.layers).forEach((layer) => {
         if (!layer) return;
         layer.synth.triggerRelease(note);
@@ -328,8 +282,7 @@ class OMSEEngine {
       });
     });
 
-    // NOTE: Patterns can be started for testing, but arps will NOT output
-    // any notes unless keys are held/sustained (activeNotes.core non-empty).
+    // patterns may run, but will NOT produce arp notes unless notes are held
     this.startOrbitPattern("orbitA");
     this.startOrbitPattern("orbitB");
     this.startOrbitPattern("orbitC");
@@ -782,9 +735,9 @@ class OMSEEngine {
    * - step wraps at numerator (cycle length)
    * - rate controls note duration
    *
-   * ✅ IMPORTANT: NO AUTOPLAY
-   * - Arp only outputs notes when core has held/sustained notes (activeNotes.core non-empty).
-   * - No fallback chord.
+   * ✅ IMPORTANT CHANGE:
+   * - NO autoplay notes.
+   * - Only plays when there are held/sustained CORE notes.
    */
   _makeOrbitArpLoop(orbitId) {
     const loop = new Tone.Loop((time) => {
@@ -800,17 +753,19 @@ class OMSEEngine {
       const arp = motion.arp || "off";
       if (arp === "off") return;
 
-      const { steps } = parseTimeSig(motion.timeSig || "4/4");
-      const noteLen = motion.rate || "8n";
-
-      // ✅ Gate arp output behind HELD/SUSTAINED notes (no autoplay)
+      // ✅ NO AUTOPLAY: require held core notes
       const chord = Array.from(this.activeNotes.core || []);
       if (!chord.length) return;
+
+      const { steps } = parseTimeSig(motion.timeSig || "4/4");
+      const noteLen = motion.rate || "8n";
 
       const sorted = chord
         .map((n) => ({ n, m: Tone.Frequency(n).toMidi() }))
         .sort((a, b) => a.m - b.m)
         .map((x) => x.n);
+
+      if (!sorted.length) return;
 
       const step = motion.step || 0;
       const idxBase = step % Math.max(1, steps);
@@ -851,7 +806,6 @@ class OMSEEngine {
       const note = sorted[pick] || sorted[0];
       orbit.synth.triggerAttackRelease(note, noteLen, time);
 
-      // Only advance step when we actually played something (still true-polyrhythm)
       this.orbitMotion[orbitId] = {
         ...motion,
         step: (step + 1) % Math.max(1, steps),

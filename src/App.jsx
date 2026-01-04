@@ -1,10 +1,10 @@
 // src/App.jsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { omseEngine } from "./engine/omseEngine";
 
 import { TopBar } from "./components/TopBar";
-import { GalaxyPresetBar } from "./components/GalaxyPresetBar";
 import { UniverseLayout } from "./components/UniverseLayout";
+import { MasterSpectrum } from "./components/MasterSpectrum";
 
 import { MASTER_PRESETS } from "./presets/masterPresets";
 import { ORBIT_MASTER_PRESETS } from "./presets/orbits/orbitMasterPresets";
@@ -13,6 +13,9 @@ import { ORBIT_VOICE_PRESETS } from "./presets/orbits/orbitVoicePresets";
 import "./App.css";
 
 const galaxy0 = MASTER_PRESETS.galaxy0;
+
+// ✅ Cycle stays supported by engine, but not exposed in TopBar UI
+const MASTER_CYCLE_MEASURES = 1;
 
 const KEY_TO_NOTE = {
   a: "C4",
@@ -33,12 +36,6 @@ function clampBpm(v) {
   const n = Number(v);
   if (!Number.isFinite(n)) return 90;
   return Math.max(20, Math.min(300, n));
-}
-
-function clampInt(v, min, max, fallback) {
-  const n = parseInt(v, 10);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.max(min, Math.min(max, n));
 }
 
 /**
@@ -131,8 +128,13 @@ function normalizeCore(core) {
 }
 
 function App() {
+  // Audio init happens once; Power toggles “instrument live”
   const [audioReady, setAudioReady] = useState(false);
-  const [isPlayingDemo, setIsPlayingDemo] = useState(false);
+  const [isPowered, setIsPowered] = useState(false);
+  const engineLive = Boolean(isPowered && audioReady);
+
+  // Track any currently-held core notes so we can "panic" on power-off.
+  const activeCoreNotesRef = useRef(new Set());
 
   // -------------------------------
   // MASTER CLOCK UI STATE
@@ -142,9 +144,6 @@ function App() {
   // default locked to 4/4, user can unlock to change
   const [masterTimeSig, setMasterTimeSig] = useState("4/4");
   const [masterSigLocked, setMasterSigLocked] = useState(true);
-
-  // user-defined cycle length (in measures)
-  const [masterCycleMeasures, setMasterCycleMeasures] = useState(1);
 
   // active master preset id (presetA … presetE)
   const [activePreset, setActivePreset] = useState(
@@ -165,7 +164,9 @@ function App() {
     return (ORBIT_MASTER_PRESETS || []).map((p) => ({
       id: p.id,
       label: p.label,
-      sig: p?.orbits?.orbitA?.motion?.timeSig ? p.orbits.orbitA.motion.timeSig : "",
+      sig: p?.orbits?.orbitA?.motion?.timeSig
+        ? p.orbits.orbitA.motion.timeSig
+        : "",
       subtitle: p.description || "",
     }));
   }, []);
@@ -185,51 +186,16 @@ function App() {
   );
 
   // -------------------------------
-  // Keyboard → Core voice
-  // -------------------------------
-  useEffect(() => {
-    const downKeys = new Set();
-
-    const handleKeyDown = (e) => {
-      if (!audioReady) return;
-      const key = e.key.toLowerCase();
-      if (!KEY_TO_NOTE[key]) return;
-      if (downKeys.has(key)) return;
-
-      downKeys.add(key);
-      omseEngine.noteOn("core", KEY_TO_NOTE[key]);
-    };
-
-    const handleKeyUp = (e) => {
-      if (!audioReady) return;
-      const key = e.key.toLowerCase();
-      if (!KEY_TO_NOTE[key]) return;
-
-      downKeys.delete(key);
-      omseEngine.noteOff("core", KEY_TO_NOTE[key]);
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("keyup", handleKeyUp);
-
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("keyup", handleKeyUp);
-      downKeys.clear();
-    };
-  }, [audioReady]);
-
-  // -------------------------------
   // Engine application helpers
   // -------------------------------
   const applyCoreLayerToEngine = (layerId, layer) => {
-    if (!audioReady) return;
+    if (!engineLive) return;
     omseEngine.setCoreLayerGain(layerId, (layer.gain ?? 0) / 100);
     omseEngine.setCoreLayerMute(layerId, !!layer.muted);
   };
 
   const applyOrbitToEngine = (orbitId, layer) => {
-    if (!audioReady) return;
+    if (!engineLive) return;
 
     omseEngine.setOrbitEnabled(orbitId, layer.enabled !== false);
     omseEngine.setOrbitGain(orbitId, (layer.gain ?? 0) / 100);
@@ -242,13 +208,134 @@ function App() {
     omseEngine.setOrbitRate(orbitId, layer.rate || "8n");
   };
 
-  // ✅ patterns ONLY: apply start/stop ONLY when orbitPatterns changes
-  useEffect(() => {
+  const panicAllNotesOff = () => {
     if (!audioReady) return;
+
+    // Force-release any latched core notes
+    try {
+      const notes = Array.from(activeCoreNotesRef.current || []);
+      notes.forEach((note) => {
+        try {
+          omseEngine.noteOff("core", note);
+        } catch {
+          // ignore
+        }
+      });
+    } finally {
+      activeCoreNotesRef.current.clear();
+    }
+  };
+
+  const silenceEngine = () => {
+    if (!audioReady) return;
+
+    // IMPORTANT: clear any held notes first (prevents latch on re-power)
+    panicAllNotesOff();
+
+    // Stop all orbit patterns
+    Object.keys(orbitPatterns || {}).forEach((orbitId) => {
+      omseEngine.setOrbitPatternState(orbitId, false);
+    });
+
+    // Mute all orbits
+    Object.keys(orbitLayers || {}).forEach((orbitId) => {
+      omseEngine.setOrbitMute(orbitId, true);
+    });
+
+    // Mute all core layers
+    Object.keys(coreLayers || {}).forEach((layerId) => {
+      omseEngine.setCoreLayerMute(layerId, true);
+    });
+  };
+
+  const reapplyStateToEngine = () => {
+    if (!engineLive) return;
+
+    // master
+    omseEngine.setMasterBpm(masterBpm);
+    omseEngine.setMasterCycleMeasures(MASTER_CYCLE_MEASURES);
+    omseEngine.setMasterTimeSig(masterTimeSig);
+
+    // core
+    Object.entries(coreLayers || {}).forEach(([layerId, layer]) => {
+      applyCoreLayerToEngine(layerId, layer);
+    });
+
+    // orbits mix/motion
+    Object.entries(orbitLayers || {}).forEach(([orbitId, layer]) => {
+      applyOrbitToEngine(orbitId, layer);
+    });
+
+    // patterns
     Object.entries(orbitPatterns || {}).forEach(([orbitId, isOn]) => {
       omseEngine.setOrbitPatternState(orbitId, !!isOn);
     });
-  }, [audioReady, orbitPatterns]);
+  };
+
+  // ✅ Sync engine with power state (no stale closures)
+  useEffect(() => {
+    if (!audioReady) return;
+
+    if (isPowered) {
+      reapplyStateToEngine();
+    } else {
+      silenceEngine();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPowered, audioReady]);
+
+  // ✅ patterns ONLY: apply start/stop ONLY when orbitPatterns changes
+  useEffect(() => {
+    if (!engineLive) return;
+    Object.entries(orbitPatterns || {}).forEach(([orbitId, isOn]) => {
+      omseEngine.setOrbitPatternState(orbitId, !!isOn);
+    });
+  }, [engineLive, orbitPatterns]);
+
+  // -------------------------------
+  // Keyboard → Core voice (only when powered)
+  // -------------------------------
+  useEffect(() => {
+    const downKeys = new Set();
+
+    const handleKeyDown = (e) => {
+      if (!engineLive) return;
+      const key = e.key.toLowerCase();
+      const note = KEY_TO_NOTE[key];
+      if (!note) return;
+      if (downKeys.has(key)) return;
+
+      downKeys.add(key);
+
+      // Track held notes globally for power-off panic
+      activeCoreNotesRef.current.add(note);
+
+      omseEngine.noteOn("core", note);
+    };
+
+    const handleKeyUp = (e) => {
+      if (!engineLive) return;
+      const key = e.key.toLowerCase();
+      const note = KEY_TO_NOTE[key];
+      if (!note) return;
+
+      downKeys.delete(key);
+
+      // Release + untrack
+      activeCoreNotesRef.current.delete(note);
+
+      omseEngine.noteOff("core", note);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+      downKeys.clear();
+    };
+  }, [engineLive]);
 
   // -------------------------------
   // MASTER CLOCK handlers
@@ -256,43 +343,40 @@ function App() {
   const handleMasterTempoChange = (nextBpm) => {
     const v = clampBpm(nextBpm);
     setMasterBpm(v);
-    if (audioReady) omseEngine.setMasterBpm(v);
+    if (engineLive) omseEngine.setMasterBpm(v);
   };
 
   const handleMasterTimeSigChange = (nextSig) => {
     setMasterTimeSig(nextSig);
-    if (audioReady) omseEngine.setMasterTimeSig(nextSig);
-  };
-
-  const handleMasterCycleMeasuresChange = (nextMeasures) => {
-    const v = clampInt(nextMeasures, 1, 64, 1);
-    setMasterCycleMeasures(v);
-    if (audioReady) omseEngine.setMasterCycleMeasures(v);
+    if (engineLive) omseEngine.setMasterTimeSig(nextSig);
   };
 
   const handleResetMasterTimeSig = () => {
     setMasterSigLocked(true);
     setMasterTimeSig("4/4");
-    if (audioReady) omseEngine.resetMasterToFourFour();
+    if (engineLive) omseEngine.resetMasterToFourFour();
   };
 
   // -------------------------------
-  // Top-level controls
+  // Power behavior
   // -------------------------------
-  const handleInitAudio = async () => {
+  const handleInitIfNeeded = async () => {
+    if (audioReady) return;
+
     await omseEngine.startAudioContext();
     setAudioReady(true);
 
-    // Apply master immediately after init
+    // Apply master immediately after init (safe even before powered)
     omseEngine.setMasterBpm(masterBpm);
-    omseEngine.setMasterCycleMeasures(masterCycleMeasures);
+    omseEngine.setMasterCycleMeasures(MASTER_CYCLE_MEASURES);
     omseEngine.setMasterTimeSig(masterTimeSig);
 
-    // Apply core
+    // Apply core to engine from active preset (and UI)
     const core = normalizeCore(activePresetConfig?.core);
     setCoreLayers(core);
     Object.entries(core).forEach(([layerId, layer]) => {
-      applyCoreLayerToEngine(layerId, layer);
+      omseEngine.setCoreLayerGain(layerId, (layer.gain ?? 0) / 100);
+      omseEngine.setCoreLayerMute(layerId, !!layer.muted);
     });
 
     // Apply orbit scene (engine + UI)
@@ -300,33 +384,40 @@ function App() {
       getOrbitSceneById(orbitSceneId) || getOrbitSceneById(initialOrbitSceneId);
 
     if (scene) {
-      // engine: set voice presets + mix + motion + patternOn
       omseEngine.applyOrbitScenePreset(scene, ORBIT_VOICE_PRESETS);
 
-      // UI: reflect scene
       const nextOrbitState = sceneToOrbitState(scene);
       setOrbitLayers(nextOrbitState.orbitLayers);
       setOrbitPatterns(nextOrbitState.orbitPatterns);
 
-      // engine: ensure mix/motion reflects UI state immediately
+      // Apply mix/motion immediately
       Object.entries(nextOrbitState.orbitLayers).forEach(([orbitId, layer]) => {
-        applyOrbitToEngine(orbitId, layer);
-      });
-    } else {
-      // fallback
-      Object.entries(orbitLayers).forEach(([orbitId, layer]) => {
-        applyOrbitToEngine(orbitId, layer);
+        omseEngine.setOrbitEnabled(orbitId, layer.enabled !== false);
+        omseEngine.setOrbitGain(orbitId, (layer.gain ?? 0) / 100);
+        omseEngine.setOrbitMute(orbitId, !!layer.muted);
+        omseEngine.setOrbitPan(orbitId, layer.pan ?? 0);
+        omseEngine.setOrbitTimeSig(orbitId, layer.timeSig || "4/4");
+        omseEngine.setOrbitArp(orbitId, layer.arp || "off");
+        omseEngine.setOrbitRate(orbitId, layer.rate || "8n");
       });
     }
   };
 
-  const handlePlayTestScene = async () => {
-    if (!audioReady) return;
-    setIsPlayingDemo(true);
-    await omseEngine.playTestScene();
-    setTimeout(() => setIsPlayingDemo(false), 9000);
+  const handleTogglePower = async () => {
+    if (!isPowered) {
+      await handleInitIfNeeded();
+      setIsPowered(true);
+      return;
+    }
+
+    // Powering off: hard stop any held notes immediately
+    panicAllNotesOff();
+    setIsPowered(false);
   };
 
+  // -------------------------------
+  // Preset apply (Galaxy0)
+  // -------------------------------
   const handleApplyPreset = (presetId) => {
     const preset = galaxy0.presets[presetId];
     if (!preset) return;
@@ -348,16 +439,13 @@ function App() {
     setOrbitLayers(nextOrbitState.orbitLayers);
     setOrbitPatterns(nextOrbitState.orbitPatterns);
 
-    if (audioReady) {
-      // apply core
+    if (engineLive) {
       Object.entries(nextCore).forEach(([layerId, layer]) => {
         applyCoreLayerToEngine(layerId, layer);
       });
 
-      // apply orbit scene (voice swap + baseline)
       if (scene) omseEngine.applyOrbitScenePreset(scene, ORBIT_VOICE_PRESETS);
 
-      // apply orbit mix/motion live (patterns handled by effect)
       Object.entries(nextOrbitState.orbitLayers).forEach(([orbitId, layer]) => {
         applyOrbitToEngine(orbitId, layer);
       });
@@ -375,7 +463,7 @@ function App() {
     setOrbitLayers(nextOrbitState.orbitLayers);
     setOrbitPatterns(nextOrbitState.orbitPatterns);
 
-    if (audioReady && scene) {
+    if (engineLive && scene) {
       omseEngine.applyOrbitScenePreset(scene, ORBIT_VOICE_PRESETS);
 
       Object.entries(nextOrbitState.orbitLayers).forEach(([orbitId, layer]) => {
@@ -481,7 +569,7 @@ function App() {
 
   // ✅ Pattern toggle ONLY changes state.
   const handleOrbitPatternToggle = (orbitId) => {
-    if (!audioReady) return;
+    if (!engineLive) return;
     setOrbitPatterns((prev) => ({ ...prev, [orbitId]: !prev?.[orbitId] }));
   };
 
@@ -494,26 +582,22 @@ function App() {
         <div className="instrument-inner">
           <div className="instrument-grid">
             <div className="instrument-row-top">
-              <TopBar
-                audioReady={audioReady}
-                isPlayingDemo={isPlayingDemo}
-                onInitAudio={handleInitAudio}
-                onPlayTestScene={handlePlayTestScene}
-                masterBpm={masterBpm}
-                onMasterTempoChange={handleMasterTempoChange}
-                masterTimeSig={masterTimeSig}
-                onMasterTimeSigChange={handleMasterTimeSigChange}
-                masterSigLocked={masterSigLocked}
-                onToggleMasterSigLocked={() => setMasterSigLocked((v) => !v)}
-                onResetMasterTimeSig={handleResetMasterTimeSig}
-                masterCycleMeasures={masterCycleMeasures}
-                onMasterCycleMeasuresChange={handleMasterCycleMeasuresChange}
-              />
-
-              <GalaxyPresetBar
-                activePreset={activePreset}
-                onSelectPreset={handleApplyPreset}
-              />
+              <div className="console-stack">
+                <TopBar
+                  isPowered={isPowered}
+                  onTogglePower={handleTogglePower}
+                  audioReady={audioReady}
+                  activePreset={activePreset}
+                  onSelectPreset={handleApplyPreset}
+                  masterBpm={masterBpm}
+                  onMasterTempoChange={handleMasterTempoChange}
+                  masterTimeSig={masterTimeSig}
+                  onMasterTimeSigChange={handleMasterTimeSigChange}
+                  masterSigLocked={masterSigLocked}
+                  onToggleMasterSigLocked={() => setMasterSigLocked((v) => !v)}
+                  onResetMasterTimeSig={handleResetMasterTimeSig}
+                />
+              </div>
             </div>
 
             <section className="instrument-row-spectrum">
@@ -522,31 +606,37 @@ function App() {
                   <div className="gravity-spectrum-header">
                     <span>Galaxy 0 · Output</span>
                   </div>
-                  <div className="gravity-spectrum-rail" />
+
+                  <div className="gravity-spectrum-rail">
+                    <MasterSpectrum audioReady={engineLive} />
+                  </div>
+
                   <div className="gravity-spectrum-tag">Gravity Spectrum</div>
                 </div>
               </section>
             </section>
 
-            <UniverseLayout
-              audioReady={audioReady}
-              coreLayers={coreLayers}
-              orbitLayers={orbitLayers}
-              orbitPatterns={orbitPatterns}
-              orbitSceneId={orbitSceneId}
-              orbitSceneOptions={orbitSceneOptions}
-              onOrbitSceneChange={handleOrbitSceneChange}
-              onLayerGainChange={handleLayerGainChange}
-              onLayerMuteToggle={handleLayerMuteToggle}
-              onOrbitGainChange={handleOrbitGainChange}
-              onOrbitMuteToggle={handleOrbitMuteToggle}
-              onOrbitPatternToggle={handleOrbitPatternToggle}
-              onOrbitPanChange={handleOrbitPanChange}
-              onOrbitTimeSigChange={handleOrbitTimeSigChange}
-              onOrbitArpChange={handleOrbitArpChange}
-              onOrbitEnabledChange={handleOrbitEnabledChange}
-              bannerUrl={bannerUrl}
-            />
+            <div className="instrument-row-main">
+              <UniverseLayout
+                audioReady={engineLive}
+                coreLayers={coreLayers}
+                orbitLayers={orbitLayers}
+                orbitPatterns={orbitPatterns}
+                orbitSceneId={orbitSceneId}
+                orbitSceneOptions={orbitSceneOptions}
+                onOrbitSceneChange={handleOrbitSceneChange}
+                onLayerGainChange={handleLayerGainChange}
+                onLayerMuteToggle={handleLayerMuteToggle}
+                onOrbitGainChange={handleOrbitGainChange}
+                onOrbitMuteToggle={handleOrbitMuteToggle}
+                onOrbitPatternToggle={handleOrbitPatternToggle}
+                onOrbitPanChange={handleOrbitPanChange}
+                onOrbitTimeSigChange={handleOrbitTimeSigChange}
+                onOrbitArpChange={handleOrbitArpChange}
+                onOrbitEnabledChange={handleOrbitEnabledChange}
+                bannerUrl={bannerUrl}
+              />
+            </div>
 
             <section className="instrument-row-bottom">{/* future row */}</section>
           </div>

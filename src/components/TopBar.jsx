@@ -1,84 +1,137 @@
 // src/components/TopBar.jsx
+import { useMemo } from "react";
 import "./TopBar.css";
-import { MasterMeter } from "./MasterMeter";
-import { MasterSpectrum } from "./MasterSpectrum";
+import { TempoKnob } from "./TempoKnob";
 
-const TIME_SIG_OPTIONS = ["4/4", "3/4", "5/4", "6/8", "7/8", "9/8", "12/8"];
+import {
+  MASTER_PRESETS,
+  GALAXY0_MASTER_PRESET_ORDER,
+} from "../presets/masterPresets";
+
+const TIME_SIG_OPTIONS = ["2/4", "3/4", "4/4", "5/4", "6/4", "7/4", "6/8", "7/8", "9/8", "12/8"];
 
 export function TopBar({
+  // Power
+  isPowered,
+  onTogglePower,
   audioReady,
-  isPlayingDemo,
-  onInitAudio,
-  onPlayTestScene,
 
+  // Master clock
   masterBpm,
   onMasterTempoChange,
-
   masterTimeSig,
   onMasterTimeSigChange,
   masterSigLocked,
   onToggleMasterSigLocked,
   onResetMasterTimeSig,
 
-  masterCycleMeasures,
-  onMasterCycleMeasuresChange,
+  // Master preset (Galaxy0 only)
+  activePreset,
+  onSelectPreset,
 }) {
+  const controlsEnabled = Boolean(isPowered && audioReady);
+
+  const galaxy0 = MASTER_PRESETS.galaxy0;
+  const presetOrder = useMemo(
+    () => (GALAXY0_MASTER_PRESET_ORDER?.length ? GALAXY0_MASTER_PRESET_ORDER : Object.keys(galaxy0?.presets || {})),
+    [galaxy0]
+  );
+
+  const resolvedPresetId = presetOrder.includes(activePreset) ? activePreset : presetOrder[0];
+  const preset = galaxy0?.presets?.[resolvedPresetId] || null;
+
+  const line1 =
+    preset?.meta?.tagsLine
+      ? `${galaxy0?.displayName || galaxy0?.name || "GALAXY0"} · ${preset.meta.tagsLine}`
+      : galaxy0?.displayName || galaxy0?.name || "GALAXY0";
+
+  const line2 =
+    preset?.meta?.moodLine ||
+    preset?.description ||
+    galaxy0?.description ||
+    "";
+
   return (
-    <div className="topbar-shell">
-      <header className="topbar-inner">
-        <div className="topbar-left">
-          <span className="topbar-product">Ober Instruments</span>
-          <span className="topbar-galaxy">Ober Sound Universe · Galaxy0 (dev)</span>
+    <section className="topbar-shell">
+      <div className="topbar-rail">
+        {/* LEFT: Brand */}
+        <div className="topbar-brand">
+          <div className="topbar-eyebrow">OBER INSTRUMENTS</div>
+          <div className="topbar-title">
+            {galaxy0?.displayName || "GALAXY0 (DEV)"}
+          </div>
         </div>
 
-        <div className="topbar-center">
-          <div className="topbar-helper">Play Core with your keyboard: A–K (C4 → C5)</div>
+        {/* PRESET */}
+        <div className="topbar-preset">
+          <div className="topbar-label">MASTER PRESET</div>
 
-          <div className="topbar-master">
-            <div className="topbar-master-block">
-              <div className="topbar-master-label">Master BPM</div>
-              <div className="topbar-bpm-row">
-                <input
-                  className="topbar-bpm-range"
-                  type="range"
-                  min="20"
-                  max="300"
-                  step="1"
-                  value={masterBpm}
-                  onChange={(e) => onMasterTempoChange?.(e.target.value)}
-                  disabled={!audioReady}
-                />
-                <input
-                  className="topbar-bpm-input"
-                  type="number"
-                  min="20"
-                  max="300"
-                  step="1"
-                  value={masterBpm}
-                  onChange={(e) => onMasterTempoChange?.(e.target.value)}
-                  disabled={!audioReady}
-                />
-              </div>
+          <select
+            className="topbar-select"
+            value={resolvedPresetId}
+            onChange={(e) => onSelectPreset?.(e.target.value)}
+            disabled={!isPowered}
+            aria-label="Master preset"
+          >
+            {presetOrder.map((pid) => {
+              const p = galaxy0?.presets?.[pid];
+              const label = p?.label || pid;
+              return (
+                <option key={pid} value={pid}>
+                  {galaxy0?.displayName || "GALAXY0 (DEV)"} — {label}
+                </option>
+              );
+            })}
+          </select>
+
+          <div className="topbar-preset-hint">
+            <div className="topbar-hint-1">{line1}</div>
+            <div className="topbar-hint-2">{line2}</div>
+          </div>
+        </div>
+
+        {/* OUTPUT / CLOCK */}
+        <div className="topbar-output">
+          <div className="topbar-output-head">
+            <div className="topbar-output-label">OUTPUT</div>
+            <span className={controlsEnabled ? "topbar-dot ok" : "topbar-dot"} />
+            <div className="topbar-meta">
+              <span>BPM {masterBpm}</span>
+              <span>SIG {masterTimeSig}</span>
+            </div>
+          </div>
+
+          <div className="topbar-output-body">
+            <div className="topbar-knob">
+              <TempoKnob
+                value={masterBpm}
+                min={20}
+                max={300}
+                step={1}
+                disabled={!controlsEnabled}
+                onChange={(v) => onMasterTempoChange?.(v)}
+              />
             </div>
 
-            <div className="topbar-master-block compact">
-              <div className="topbar-master-label">Master Time Sig</div>
-              <div className="topbar-sig-row">
+            <div className="topbar-controls">
+              <div className="topbar-mini-label">MASTER TIME SIG</div>
+              <div className="topbar-row">
                 <button
                   type="button"
-                  className={"topbar-pill" + (masterSigLocked ? " locked" : " unlocked")}
+                  className={masterSigLocked ? "topbar-chip locked" : "topbar-chip"}
                   onClick={onToggleMasterSigLocked}
-                  title={masterSigLocked ? "Locked to 4/4 (click to unlock)" : "Unlocked (click to lock)"}
+                  disabled={!controlsEnabled}
+                  title="Lock / unlock time signature"
                 >
-                  {masterSigLocked ? "Locked" : "Unlocked"}
+                  {masterSigLocked ? "LOCKED" : "UNLOCKED"}
                 </button>
 
                 <select
-                  className="topbar-sig-select"
+                  className="topbar-mini-select"
                   value={masterTimeSig}
+                  disabled={!controlsEnabled || masterSigLocked}
                   onChange={(e) => onMasterTimeSigChange?.(e.target.value)}
-                  disabled={!audioReady || masterSigLocked}
-                  title={masterSigLocked ? "Unlock to change time signature" : "Set master time signature"}
+                  aria-label="Master time signature"
                 >
                   {TIME_SIG_OPTIONS.map((sig) => (
                     <option key={sig} value={sig}>
@@ -89,63 +142,41 @@ export function TopBar({
 
                 <button
                   type="button"
-                  className="topbar-pill reset"
+                  className="topbar-chip"
                   onClick={onResetMasterTimeSig}
-                  disabled={!audioReady}
-                  title="Reset master time signature to 4/4 and lock"
+                  disabled={!controlsEnabled}
+                  title="Reset to 4/4 and lock"
                 >
-                  Reset 4/4
+                  RESET 4/4
                 </button>
               </div>
             </div>
-
-            <div className="topbar-master-block compact">
-              <div className="topbar-master-label">Cycle</div>
-              <div className="topbar-cycle-row">
-                <span className="topbar-cycle-hint">Measures</span>
-                <input
-                  className="topbar-cycle-input"
-                  type="number"
-                  min="1"
-                  max="64"
-                  step="1"
-                  value={masterCycleMeasures}
-                  onChange={(e) => onMasterCycleMeasuresChange?.(e.target.value)}
-                  disabled={!audioReady}
-                />
-              </div>
-              <div className="topbar-cycle-sub">Orbits divide this cycle into pulses</div>
-            </div>
           </div>
         </div>
 
-        <div className="topbar-right">
-          {!audioReady ? (
-            <button type="button" className="topbar-btn primary" onClick={onInitAudio}>
-              Initialize Audio
-            </button>
-          ) : (
-            <button
-              type="button"
-              className={"topbar-btn" + (isPlayingDemo ? " disabled" : "")}
-              onClick={onPlayTestScene}
-              disabled={isPlayingDemo}
-            >
-              {isPlayingDemo ? "Playing Scene…" : "Play Test Scene"}
-            </button>
-          )}
+        {/* POWER */}
+        <div className="topbar-power">
+          <button
+            type="button"
+            className={isPowered ? "topbar-power-btn on" : "topbar-power-btn"}
+            onClick={onTogglePower}
+            title={isPowered ? "Power Off" : "Power On"}
+          >
+            <span className="topbar-power-icon" aria-hidden="true">⏻</span>
+            <span className="topbar-power-text">
+              {isPowered ? "POWER ON" : "POWER OFF"}
+            </span>
+          </button>
 
-          <div className="topbar-output">
-            <span className="topbar-output-label">Output</span>
-            <div className="topbar-output-spectrum">
-              <MasterSpectrum audioReady={audioReady} />
-            </div>
-            <div className="topbar-output-meter">
-              <MasterMeter audioReady={audioReady} />
-            </div>
+          <div className="topbar-power-hint">
+            {isPowered ? (audioReady ? "Engine ready" : "Booting audio…") : "Instrument offline"}
           </div>
         </div>
-      </header>
-    </div>
+      </div>
+
+      <div className="topbar-engrave">
+        Play Core with your keyboard: <strong>A–K</strong> (C4 → C5)
+      </div>
+    </section>
   );
 }

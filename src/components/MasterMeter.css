@@ -1,55 +1,77 @@
-.master-meter {
-  width: 80px;
-  height: 6px;
-  border-radius: 999px;
-  background: rgba(15, 23, 42, 0.95);
-  overflow: hidden;
-  position: relative;
-}
+/* src/components/MasterMeter.css */
 
-.master-meter-fill {
+.master-meter {
   width: 100%;
   height: 100%;
-  border-radius: inherit;
-  transform-origin: left;
-  background: linear-gradient(
-    90deg,
-    rgba(56, 189, 248, 0.95),
-    rgba(129, 140, 248, 0.95),
-    rgba(236, 72, 153, 0.9)
-  );
-  opacity: 0.9;
+  display: flex;
+  align-items: center;
 }
 
-/* (optional – safe to keep if you later add labels) */
-
-.master-meter-label {
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: rgba(148, 163, 184, 0.9);
-}
-
-.master-meter-bar {
-  flex: 1;
-  height: 6px;
-  border-radius: 999px;
-  background: radial-gradient(
-    80% 200% at 0% 50%,
-    rgba(56, 189, 248, 0.25),
-    rgba(15, 23, 42, 0.85)
-  );
-  overflow: hidden;
-}
-
-.master-meter-bar-inner {
+/* the “slot” */
+.master-meter-track {
+  width: 100%;
   height: 100%;
   border-radius: 999px;
+  position: relative;
+  overflow: hidden;
+
+  background:
+    radial-gradient(120% 240% at 0% 50%, rgba(106, 181, 255, 0.16), transparent 55%),
+    linear-gradient(180deg, rgba(18, 22, 38, 0.96), rgba(10, 12, 22, 0.98));
+  border: 1px solid rgba(255, 255, 255, 0.06);
+
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 -8px 14px rgba(0, 0, 0, 0.55);
+}
+
+/* filled energy */
+.master-meter-fill {
+  position: absolute;
+  inset: 0;
+  transform-origin: left;
+  border-radius: inherit;
+
   background: linear-gradient(
     90deg,
     rgba(56, 189, 248, 0.95),
     rgba(129, 140, 248, 0.95),
     rgba(236, 72, 153, 0.9)
   );
-  transition: width 60ms linear;
+
+  opacity: 0.9;
+
+  /* makes motion feel smoother without laggy transitions */
+  will-change: transform;
+}
+
+/* subtle glossy “glass” highlight */
+.master-meter-gloss {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.14),
+    rgba(255, 255, 255, 0.02) 35%,
+    transparent 55%
+  );
+
+  mix-blend-mode: soft-light;
+  opacity: 0.8;
+}
+
+/* darker ends so it feels embedded */
+.master-meter-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+
+  background:
+    radial-gradient(60% 120% at 0% 50%, rgba(0, 0, 0, 0.55), transparent 55%),
+    radial-gradient(60% 120% at 100% 50%, rgba(0, 0, 0, 0.55), transparent 55%);
+  opacity: 0.65;
 }

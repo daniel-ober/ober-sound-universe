@@ -8,18 +8,21 @@ const CORE_LAYERS_META = [
     label: "GROUND",
     subtitle: "Warm Human Core",
     themeClass: "core-strip--ground",
+    meterVariant: "ground",
   },
   {
     id: "harmony",
     label: "HARMONY",
     subtitle: "Harmonious Horizon",
     themeClass: "core-strip--harmony",
+    meterVariant: "harmony",
   },
   {
     id: "atmosphere",
     label: "ATMOSPHERE",
     subtitle: "Ascending Spirit",
     themeClass: "core-strip--atmosphere",
+    meterVariant: "atmosphere",
   },
 ];
 
@@ -28,41 +31,44 @@ export function CoreMixer({
   coreLayers,
   onLayerGainChange,
   onLayerMuteToggle,
-  bannerUrl,          // 👈 new: master preset banner
+
+  bannerUrl,
+  sceneName,
 }) {
+  const bannerTitle = (sceneName || "CORE DAWN").toUpperCase();
+
   return (
     <div className="core-rack">
-      {/* ✨ Master preset banner (uses PNG if provided) */}
       <div
-        className={
-          "core-rack-banner" + (bannerUrl ? " has-banner-image" : "")
-        }
+        className={"core-rack-banner" + (bannerUrl ? " has-banner-image" : "")}
         style={bannerUrl ? { backgroundImage: `url(${bannerUrl})` } : undefined}
       >
         <div className="core-rack-banner-overlay">
-          <span className="core-rack-banner-title">CORE SCENE</span>
+          <div className="core-rack-banner-left">
+            <span className="core-rack-banner-kicker">CORE SCENE</span>
+            <span className="core-rack-banner-name">{bannerTitle}</span>
+          </div>
+
           <span className="core-rack-banner-status">
             {audioReady ? "READY" : "NOT INITIALIZED"}
           </span>
         </div>
       </div>
 
-      {/* thin sub-header like “MASTER PRESET” bar */}
       <header className="core-rack-header">
         <span className="core-rack-title">Core Layers</span>
+        <span className="core-rack-hint">Balance foundation, harmony, and air</span>
       </header>
 
       <div className="core-rack-strips">
-        {CORE_LAYERS_META.map(({ id, label, subtitle, themeClass }) => {
+        {CORE_LAYERS_META.map(({ id, label, subtitle, themeClass, meterVariant }) => {
           const layerState = coreLayers?.[id] || { gain: 0, muted: false };
           const percent = Math.round(layerState.gain ?? 0);
 
           return (
             <div key={id} className={`core-strip ${themeClass}`}>
-              {/* gradient spectrum underlay */}
               <div className="core-strip-bg" />
 
-              {/* glass top bar with label + name + percent */}
               <div className="core-strip-inner">
                 <div className="core-strip-text">
                   <span className="core-strip-label">{label}</span>
@@ -74,10 +80,15 @@ export function CoreMixer({
                 </div>
               </div>
 
-              {/* animated level meter between title band + controls */}
-              <CoreLayerMeter layerId={id} audioReady={audioReady} />
+              {/* Polished per-layer output analyzer */}
+              <div className="core-strip-meter">
+                <CoreLayerMeter
+                  layerId={id}
+                  audioReady={audioReady}
+                  variant={meterVariant}
+                />
+              </div>
 
-              {/* controls row – slider + mute */}
               <div className="core-strip-controls">
                 <input
                   type="range"
@@ -85,9 +96,7 @@ export function CoreMixer({
                   max={100}
                   value={percent}
                   disabled={!audioReady}
-                  onChange={(e) =>
-                    onLayerGainChange(id, Number(e.target.value))
-                  }
+                  onChange={(e) => onLayerGainChange(id, Number(e.target.value))}
                   className="core-strip-slider"
                 />
 

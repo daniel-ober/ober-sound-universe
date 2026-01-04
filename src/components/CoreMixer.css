@@ -1,3 +1,5 @@
+/* src/components/CoreMixer.css */
+
 /* ==========================
    CORE MIXER – POLYGRAVITY
    ========================== */
@@ -24,12 +26,11 @@
 
 .core-rack-banner {
   position: relative;
-  height: 60px;
-  margin: 6px -10px 4px;
+  height: 66px;
+  margin: 6px -10px 6px;
   border-radius: 16px 16px 10px 10px;
   overflow: hidden;
 
-  /* fallback rainbow gradient when no image is set */
   background: linear-gradient(
     90deg,
     #ffb36b 0%,
@@ -40,10 +41,9 @@
   );
   background-size: cover;
   background-position: center;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.10);
 }
 
-/* when a PNG is applied we slightly tighten the frame */
 .core-rack-banner.has-banner-image {
   border-color: rgba(255, 255, 255, 0.16);
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.95);
@@ -59,22 +59,36 @@
   background: linear-gradient(
     180deg,
     rgba(5, 8, 15, 0.10),
-    rgba(2, 4, 10, 0.85)
+    rgba(2, 4, 10, 0.86)
   );
 }
 
-.core-rack-banner-title {
-  font-size: 11px;
+.core-rack-banner-left {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.core-rack-banner-kicker {
+  font-size: 10px;
   letter-spacing: 0.22em;
   text-transform: uppercase;
   color: rgba(246, 249, 255, 0.98);
+}
+
+.core-rack-banner-name {
+  font-size: 16px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(246, 232, 200, 0.95);
+  text-shadow: 0 8px 24px rgba(0, 0, 0, 0.8);
 }
 
 .core-rack-banner-status {
   font-size: 10px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: rgba(214, 228, 255, 0.9);
+  color: rgba(214, 228, 255, 0.92);
 }
 
 /* ================
@@ -85,10 +99,10 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 6px 4px 8px;
+  padding: 8px 6px 10px;
   border-top: 1px solid rgba(255, 255, 255, 0.16);
   border-bottom: 1px solid rgba(255, 255, 255, 0.12);
-  margin: 0 2px 8px;
+  margin: 0 2px 10px;
 }
 
 .core-rack-title {
@@ -98,12 +112,17 @@
   color: rgba(190, 208, 238, 0.9);
 }
 
+.core-rack-hint {
+  font-size: 11px;
+  color: rgba(180, 195, 230, 0.78);
+}
+
 /* container for the 3 rows */
 
 .core-rack-strips {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 /* ===========================
@@ -120,8 +139,6 @@
     inset 0 0 0 1px rgba(0, 0, 0, 0.6);
 }
 
-/* rainbow-ish band underlay */
-
 .core-strip-bg {
   position: absolute;
   inset: 0;
@@ -129,8 +146,7 @@
   pointer-events: none;
 }
 
-/* different palettes per layer */
-
+/* palettes per layer */
 .core-strip--ground .core-strip-bg {
   background: linear-gradient(90deg, #ff9d4d 0%, #ffc56e 50%, #ffe2aa 100%);
 }
@@ -149,12 +165,12 @@
 
 .core-strip-inner {
   position: relative;
-  padding: 8px 14px 6px;
+  padding: 9px 14px 8px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   background: linear-gradient(180deg, #090c18, #050713);
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(10px);
   border-bottom: 1px solid rgba(255, 255, 255, 0.14);
 }
 
@@ -178,23 +194,22 @@
 }
 
 .core-strip-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.core-strip-percent {
   font-size: 13px;
   font-weight: 600;
   color: rgba(242, 247, 255, 0.98);
 }
 
-/* ===========================
-   STRIP: LEVEL METER
-   =========================== */
-
-.core-strip .core-layer-meter {
-  margin: 3px 10px 5px;
-  width: auto;
-  background: rgba(5, 9, 20, 0.95);
-}
-
-.core-strip .core-layer-meter-fill {
-  background: linear-gradient(90deg, #38bdf8, #6366f1, #a855f7);
+/* meter wrapper spacing */
+.core-strip-meter {
+  padding: 0 12px;
+  background: linear-gradient(180deg, rgba(5, 7, 19, 0.85), rgba(2, 3, 10, 0.95));
+  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
 }
 
 /* ===========================
@@ -203,7 +218,7 @@
 
 .core-strip-controls {
   position: relative;
-  padding: 7px 12px 9px;
+  padding: 9px 12px 10px;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -213,7 +228,6 @@
 }
 
 /* slider */
-
 .core-strip-slider {
   flex: 1;
   appearance: none;
@@ -222,8 +236,6 @@
   background: rgba(14, 18, 30, 0.9);
   outline: none;
 }
-
-/* slider thumb */
 
 .core-strip-slider::-webkit-slider-thumb {
   appearance: none;
@@ -243,11 +255,10 @@
 }
 
 /* mute button */
-
 .core-strip-mute {
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 4px 14px;
+  padding: 5px 14px;
   font-size: 9px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
@@ -282,16 +293,13 @@
   border-color: rgba(255, 217, 149, 0.7);
 }
 
-/* disabled state (before audio init) */
-
+/* disabled */
 .core-strip-slider:disabled,
 .core-strip-mute:disabled {
   opacity: 0.4;
   cursor: default;
   box-shadow: none;
 }
-
-/* small screens tweak */
 
 @media (max-width: 720px) {
   .core-rack {
@@ -308,5 +316,9 @@
 
   .core-strip-name {
     font-size: 12px;
+  }
+
+  .core-rack-hint {
+    display: none;
   }
 }
