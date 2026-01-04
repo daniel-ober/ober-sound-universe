@@ -106,7 +106,10 @@ body {
 
 .instrument-frame {
   width: min(1600px, 100vw - 32px);
-  aspect-ratio: 16 / 9;
+
+  /* ✅ FIX: stop hard-clipping by 16:9. Use available viewport height. */
+  height: min(980px, calc(100vh - 48px));
+
   border-radius: 32px;
   position: relative;
   overflow: hidden;
@@ -161,6 +164,10 @@ body {
   background: url("/assets/skins/inner-panel.png") center/cover no-repeat;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03),
     0 26px 60px rgba(0, 0, 0, 0.9);
+
+  /* ✅ FIX: if content still exceeds the frame height, scroll INSIDE the panel */
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .instrument-inner::after {
@@ -295,7 +302,9 @@ body {
   box-shadow: var(--shadow-soft);
   padding: 20px 26px 22px;
   position: relative;
-  overflow: hidden;
+
+  /* keep visuals, but don't clip internal content if it needs to extend */
+  overflow: visible;
 }
 
 .core-panel::before {
@@ -521,7 +530,10 @@ body {
   box-shadow: var(--shadow-soft);
   padding: 18px 18px 20px;
   position: relative;
-  overflow: hidden;
+
+  /* ✅ allow internal layout to breathe; clipping was killing the bottom */
+  overflow: visible;
+
   display: flex;
   flex-direction: column;
 }
@@ -845,7 +857,9 @@ body {
   color: rgba(232, 240, 255, 0.96);
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.9);
   position: relative;
-  overflow: hidden;
+
+  /* ✅ don't clip your own controls inside voice cards */
+  overflow: visible;
 
   flex: 1;
   min-height: 0;
@@ -1067,7 +1081,9 @@ body {
   .instrument-frame {
     width: 100%;
     border-radius: 0;
-    aspect-ratio: auto;
+
+    /* mobile already expands naturally */
+    height: auto;
   }
 
   .instrument-inner {
@@ -1075,6 +1091,7 @@ body {
     border-radius: 0;
     inset: 0;
     height: auto;
+    overflow: visible;
   }
 
   .instrument-grid {
