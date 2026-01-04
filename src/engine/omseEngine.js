@@ -1,6 +1,7 @@
 // src/engine/omseEngine.js
 import * as Tone from "tone";
 import { buildOrbitVoice } from "./orbitVoiceFactory";
+import { buildCoreLayerFromPreset } from "./coreVoiceFactory";
 
 /**
  * Helper to build a smoothed, 0–1 meter
@@ -47,6 +48,10 @@ function safeTimeSigString(sig) {
  * ✅ TRUE POLYRHYTHM MODEL
  * - Master defines "cycle" length in measures + master time signature (defines what 1 measure means)
  * - Each Orbit "timeSig" uses its NUMERATOR as pulses per master cycle
+ *
+ * ✅ CORE LAYERS (hi-res)
+ * - ground / harmony / atmosphere are built via coreVoiceFactory
+ * - core FX: reverb + delay sends (stable, never rebuilt on UI change)
  */
 class OMSEEngine {
   constructor() {
@@ -58,6 +63,10 @@ class OMSEEngine {
 
     // Spectrum analyser (for MasterSpectrum.jsx)
     this.masterAnalyser = null;
+
+    // Global FX sends (core “hi-res space”)
+    this.coreReverb = null;
+    this.coreDelay = null;
 
     // Core buss + layers
     this.coreBuss = null;
@@ -274,6 +283,47 @@ class OMSEEngine {
     layer.gain.gain.value = layer.muted ? 0 : layer.baseGain;
   }
 
+  /**
+   * Apply a Core Layer preset (ground/harmony/atmosphere).
+   * - Disposes old layer synth graph cleanly
+   * - Rebuilds ONLY that layer (core FX + buss remain stable)
+   *
+   * preset is expected to be an object understood by buildCoreLayerFromPreset()
+   */
+  setCoreLayerPreset(layerId, preset) {
+    if (!this.initialized) return;
+    if (!["ground", "harmony", "atmosphere"].includes(layerId)) return;
+
+    const prev = this.core.layers[layerId];
+    const prevGain = prev?.baseGain ?? 0.75;
+    const prevMuted = !!prev?.muted;
+
+    // Release any held notes for that layer
+    try {
+      this.activeNotes.core?.forEach((n) => {
+        prev?.synth?.triggerRelease?.(n);
+      });
+    } catch {
+      // ignore
+    }
+
+    // Dispose previous graph (layer-only)
+    this._disposeCoreLayer(prev);
+
+    // Build new layer graph from preset
+    const next = this._buildCoreLayerFromPreset(layerId, preset, {
+      baseGain: prevGain,
+      muted: prevMuted,
+    });
+
+    this.core.layers[layerId] = next;
+
+    // Respect mute/gain
+    next.baseGain = clamp01(prevGain);
+    next.muted = prevMuted;
+    next.gain.gain.value = next.muted ? 0 : next.baseGain;
+  }
+
   // ----- Orbit controls (continuous-safe) -----
 
   setOrbitGain(orbitId, normalized) {
@@ -391,8 +441,7 @@ class OMSEEngine {
       orbit.synth?.disconnect?.();
       orbit.synth?.dispose?.();
 
-      // ✅ FIX: this used to call a missing function.
-      // We now build from orbitVoiceFactory (stable + centralized).
+      // ✅ FIX: build from orbitVoiceFactory (stable + centralized).
       const synth = buildOrbitVoice(voicePreset);
 
       const filterCfg = voicePreset?.params?.filter;
@@ -501,6 +550,22 @@ class OMSEEngine {
     this._ensureOrbitLoopsRunning();
   }
 
+  /**
+   * ✅ Apply core layers from a Core Layer preset bundle:
+   * {
+   *   ground: <presetObj>,
+   *   harmony: <presetObj>,
+   *   atmosphere: <presetObj>
+   * }
+   */
+  applyCoreLayerPresetBundle(bundle) {
+    if (!this.initialized || !bundle) return;
+
+    if (bundle.ground) this.setCoreLayerPreset("ground", bundle.ground);
+    if (bundle.harmony) this.setCoreLayerPreset("harmony", bundle.harmony);
+    if (bundle.atmosphere) this.setCoreLayerPreset("atmosphere", bundle.atmosphere);
+  }
+
   // ---------- INTERNAL ----------
 
   _applyMasterToTransport() {
@@ -576,32 +641,41 @@ class OMSEEngine {
     this.masterAnalyser = new Tone.Analyser("fft", 1024);
     this.masterGain.connect(this.masterAnalyser);
 
+    // CORE FX (hi-res space)
+    this.coreReverb = new Tone.Reverb({
+      decay: 6.5,
+      wet: 0.28,
+    });
+
+    this.coreDelay = new Tone.FeedbackDelay({
+      delayTime: "8n",
+      feedback: 0.25,
+      wet: 0.18,
+    });
+
     // CORE BUSS
     this.coreBuss = new Tone.Gain(1).connect(this.masterGain);
     this.coreMeter = makeMeter();
     this.coreBuss.connect(this.coreMeter);
 
-    // CORE LAYERS
-    this.core.layers.ground = this._buildCoreLayer({
-      type: "sine",
-      spread: 0,
-      detune: -1200,
+    // Route FX returns to master
+    this.coreReverb.connect(this.masterGain);
+    this.coreDelay.connect(this.masterGain);
+
+    // CORE LAYERS (built via presets factory defaults)
+    this.core.layers.ground = this._buildCoreLayerFromPreset("ground", null, {
       baseGain: 0.9,
+      muted: false,
     });
 
-    this.core.layers.harmony = this._buildCoreLayer({
-      type: "sawtooth",
-      spread: 10,
-      detune: 0,
+    this.core.layers.harmony = this._buildCoreLayerFromPreset("harmony", null, {
       baseGain: 0.8,
+      muted: false,
     });
 
-    this.core.layers.atmosphere = this._buildCoreLayer({
-      type: "triangle",
-      spread: 20,
-      detune: 12,
+    this.core.layers.atmosphere = this._buildCoreLayerFromPreset("atmosphere", null, {
       baseGain: 0.7,
-      airy: true,
+      muted: false,
     });
 
     // ORBITS (fallback voices; scene presets can swap these)
@@ -630,38 +704,6 @@ class OMSEEngine {
     this._refreshAllOrbitIntervals();
   }
 
-  _buildCoreLayer({ type, spread, detune, baseGain, airy = false }) {
-    const synth = new Tone.PolySynth(Tone.Synth, {
-      oscillator: { type, spread, detune },
-      envelope: { attack: 0.02, decay: 0.4, sustain: 0.7, release: 1.8 },
-    });
-
-    let outputNode = synth;
-
-    if (airy) {
-      const noise = new Tone.Noise("pink").start();
-      const noiseFilter = new Tone.Filter(6000, "lowpass");
-      const noiseGain = new Tone.Gain(0.15);
-
-      noise.connect(noiseFilter);
-      noiseFilter.connect(noiseGain);
-
-      const merge = new Tone.Gain(1);
-      synth.connect(merge);
-      noiseGain.connect(merge);
-
-      outputNode = merge;
-    }
-
-    const gain = new Tone.Gain(baseGain).connect(this.coreBuss);
-    const meter = makeMeter();
-    gain.connect(meter);
-
-    outputNode.connect(gain);
-
-    return { synth, gain, meter, muted: false, baseGain };
-  }
-
   _buildOrbitVoice({ type, pan, baseGain }) {
     const synth = new Tone.PolySynth(Tone.Synth, {
       oscillator: { type },
@@ -685,6 +727,111 @@ class OMSEEngine {
       muted: false,
       baseGain,
       _filter: null,
+    };
+  }
+
+  _disposeCoreLayer(layer) {
+    if (!layer) return;
+
+    try {
+      layer.synth?.disconnect?.();
+      layer.synth?.dispose?.();
+    } catch {
+      // ignore
+    }
+
+    try {
+      layer.preGain?.disconnect?.();
+      layer.preGain?.dispose?.();
+    } catch {
+      // ignore
+    }
+
+    try {
+      layer.gain?.disconnect?.();
+      layer.gain?.dispose?.();
+    } catch {
+      // ignore
+    }
+
+    try {
+      layer.meter?.disconnect?.();
+      layer.meter?.dispose?.();
+    } catch {
+      // ignore
+    }
+
+    try {
+      layer.sendReverb?.disconnect?.();
+      layer.sendReverb?.dispose?.();
+    } catch {
+      // ignore
+    }
+
+    try {
+      layer.sendDelay?.disconnect?.();
+      layer.sendDelay?.dispose?.();
+    } catch {
+      // ignore
+    }
+  }
+
+  /**
+   * Build a core layer from a preset using coreVoiceFactory.
+   * We keep the buss + FX stable, and connect:
+   *   synth -> preGain -> (dry gain -> coreBuss)
+   *                -> (reverb send -> coreReverb)
+   *                -> (delay send -> coreDelay)
+   */
+  _buildCoreLayerFromPreset(layerId, preset, { baseGain = 0.75, muted = false } = {}) {
+    // buildCoreLayerFromPreset is responsible for returning a playable synth graph
+    // It may return:
+    //  - Tone.PolySynth / Tone.Synth / Tone.Sampler / Tone.Instrument-ish object with triggerAttack/Release
+    //  - OR { synth, output } where output is an AudioNode to connect
+    const built = buildCoreLayerFromPreset(layerId, preset);
+
+    let synth = built;
+    let outputNode = built;
+
+    if (built && typeof built === "object" && built.synth && built.output) {
+      synth = built.synth;
+      outputNode = built.output;
+    }
+
+    // Pre-gain (lets us control FX sends without changing dry level math)
+    const preGain = new Tone.Gain(1);
+
+    // Dry path
+    const gain = new Tone.Gain(clamp01(baseGain)).connect(this.coreBuss);
+
+    // Meter (post-dry)
+    const meter = makeMeter();
+    gain.connect(meter);
+
+    // FX sends
+    const sendReverb = new Tone.Gain(0.18).connect(this.coreReverb);
+    const sendDelay = new Tone.Gain(0.12).connect(this.coreDelay);
+
+    // Connect graph
+    outputNode.connect(preGain);
+    preGain.connect(gain);
+    preGain.connect(sendReverb);
+    preGain.connect(sendDelay);
+
+    // Apply mute
+    gain.gain.value = muted ? 0 : clamp01(baseGain);
+
+    return {
+      synth,
+      output: outputNode,
+      preGain,
+      gain,
+      meter,
+      sendReverb,
+      sendDelay,
+      muted: !!muted,
+      baseGain: clamp01(baseGain),
+      presetId: preset?.id ?? null,
     };
   }
 
