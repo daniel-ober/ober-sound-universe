@@ -1,380 +1,335 @@
 // src/presets/orbits/orbitMasterPresets.js
 
 /**
- * ORBIT MASTER PRESETS (emotion-driven)
+ * ORBIT MASTER PRESETS (Scenes)
+ * -----------------------------
+ * Emotion-driven orbit scenes.
+ * Each scene defines:
+ *  - which orbit voices are enabled
+ *  - which voicePresetId each uses
+ *  - motion (polyrhythmPresetId, arpPresetId, rate, patternOn)
+ *  - mix (gain 0..1, pan -1..1, muted bool)
  *
- * IMPORTANT:
- * - These are NOT named after time signatures.
- * - Time sigs are *ingredients* that shape pulse-feel, but the preset identity
- *   is the emotional rhythmic result.
+ * Naming rule:
+ *  - Name the "combined rhythmic emotion"
+ *  - NOT the time signature
  *
- * UI shows label only.
- * Engine still uses motion.timeSig/arp/rate under the hood.
+ * NOTE:
+ * These scenes reference motion presets by ID so you can expand:
+ * - arp library (ARP_PRESETS)
+ * - polyrhythm library (POLYRHYTHM_PRESETS)
+ * without rewriting scenes.
  */
 
 export const ORBIT_MASTER_PRESETS = [
+  // =========================================================
+  // CORE-DAWN BEST MATCH: grounded shimmer + controlled motion
+  // =========================================================
   {
-    id: "staggered_sparkle",
-    label: "Staggered Sparkle",
-    description: "Bright, offset glints that feel playful but controlled.",
+    id: "anchor_bloom",
+    label: "Anchor Bloom",
+    description: "Grounded shimmer with a gentle, confident pulse.",
+    vibeTags: ["grounded", "cinematic", "controlled"],
     orbits: {
       orbitA: {
         enabled: true,
-        voicePresetId: "glassBell",
-        motion: { timeSig: "6/4", arp: "upDown", rate: "8n" },
-        mix: { gain: 0.7, pan: -0.2, muted: false },
+        voicePresetId: "cedarPluck",
+        motion: {
+          polyrhythmPresetId: "4_4",
+          arpPresetId: "upDown",
+          rate: "16n",
+          patternOn: true,
+        },
+        mix: { gain: 0.52, pan: -0.18, muted: false },
       },
       orbitB: {
         enabled: true,
-        voicePresetId: "softPluck",
-        motion: { timeSig: "5/4", arp: "down", rate: "16n" },
-        mix: { gain: 0.6, pan: 0.15, muted: false },
+        voicePresetId: "velvetBell",
+        motion: {
+          polyrhythmPresetId: "5_4",
+          arpPresetId: "downUp",
+          rate: "8n",
+          patternOn: true,
+        },
+        mix: { gain: 0.46, pan: 0.18, muted: false },
       },
       orbitC: {
-        enabled: false,
-        voicePresetId: "violetAir",
-        motion: { timeSig: "7/4", arp: "random", rate: "8n" },
-        mix: { gain: 0.45, pan: 0.1, muted: true },
+        enabled: true,
+        voicePresetId: "whisperAir",
+        motion: {
+          polyrhythmPresetId: "6_8",
+          arpPresetId: "off",
+          rate: "2n",
+          patternOn: false,
+        },
+        mix: { gain: 0.22, pan: 0.05, muted: false },
+      },
+    },
+  },
+
+  // =========================================================
+  // SOLAR-DRIFT BEST MATCH: warm floating drift, wide halo
+  // =========================================================
+  {
+    id: "warm_tides",
+    label: "Warm Tides",
+    description: "Slow warm drift with soft interlocking steps.",
+    vibeTags: ["warm", "floating", "expansive"],
+    orbits: {
+      orbitA: {
+        enabled: true,
+        voicePresetId: "haloPad",
+        motion: {
+          polyrhythmPresetId: "6_4",
+          arpPresetId: "drone",
+          rate: "2n",
+          patternOn: true,
+        },
+        mix: { gain: 0.34, pan: -0.12, muted: false },
+      },
+      orbitB: {
+        enabled: true,
+        voicePresetId: "velvetBell",
+        motion: {
+          polyrhythmPresetId: "9_8",
+          arpPresetId: "random",
+          rate: "4n",
+          patternOn: true,
+        },
+        mix: { gain: 0.40, pan: 0.14, muted: false },
+      },
+      orbitC: {
+        enabled: true,
+        voicePresetId: "whisperAir",
+        motion: {
+          polyrhythmPresetId: "4_4",
+          arpPresetId: "off",
+          rate: "1n",
+          patternOn: false,
+        },
+        mix: { gain: 0.18, pan: -0.02, muted: false },
+      },
+    },
+  },
+
+  // =========================================================
+  // AURORA-PULSE BEST MATCH: energetic luminous stepping
+  // =========================================================
+  {
+    id: "kinetic_prism",
+    label: "Kinetic Prism",
+    description: "Bright interlocking motion that feels like climbing light.",
+    vibeTags: ["luminous", "rhythmic", "energetic"],
+    orbits: {
+      orbitA: {
+        enabled: true,
+        voicePresetId: "carbonPluck",
+        motion: {
+          polyrhythmPresetId: "5_4",
+          arpPresetId: "up",
+          rate: "16n",
+          patternOn: true,
+        },
+        mix: { gain: 0.56, pan: -0.16, muted: false },
+      },
+      orbitB: {
+        enabled: true,
+        voicePresetId: "prismBell",
+        motion: {
+          polyrhythmPresetId: "7_8",
+          arpPresetId: "upDown",
+          rate: "8n",
+          patternOn: true,
+        },
+        mix: { gain: 0.46, pan: 0.18, muted: false },
+      },
+      orbitC: {
+        enabled: true,
+        voicePresetId: "glassPulse",
+        motion: {
+          polyrhythmPresetId: "4_4",
+          arpPresetId: "pulse",
+          rate: "16n",
+          patternOn: true,
+        },
+        mix: { gain: 0.22, pan: 0.04, muted: false },
+      },
+    },
+  },
+
+  // =========================================================
+  // NEBULA-ECHO BEST MATCH: ethereal, wide, dream haze
+  // =========================================================
+  {
+    id: "nebula_haze",
+    label: "Nebula Haze",
+    description: "A drifting haze—harmonics bloom outward, motion stays soft.",
+    vibeTags: ["ethereal", "wide", "dreamlike"],
+    orbits: {
+      orbitA: {
+        enabled: true,
+        voicePresetId: "duskPad",
+        motion: {
+          polyrhythmPresetId: "6_8",
+          arpPresetId: "shimmer",
+          rate: "2n",
+          patternOn: true,
+        },
+        mix: { gain: 0.36, pan: -0.10, muted: false },
+      },
+      orbitB: {
+        enabled: true,
+        voicePresetId: "velvetBell",
+        motion: {
+          polyrhythmPresetId: "11_8",
+          arpPresetId: "random",
+          rate: "8n",
+          patternOn: true,
+        },
+        mix: { gain: 0.30, pan: 0.12, muted: false },
+      },
+      orbitC: {
+        enabled: true,
+        voicePresetId: "whisperAir",
+        motion: {
+          polyrhythmPresetId: "4_4",
+          arpPresetId: "off",
+          rate: "1n",
+          patternOn: false,
+        },
+        mix: { gain: 0.16, pan: 0.02, muted: false },
+      },
+    },
+  },
+
+  // =========================================================
+  // MIDNIGHT-BLOOM BEST MATCH: moody, velvet, late-night
+  // =========================================================
+  {
+    id: "midnight_embers",
+    label: "Midnight Embers",
+    description: "Sparse, moody pulses with a slow-burning shimmer.",
+    vibeTags: ["moody", "velvet", "late-night"],
+    orbits: {
+      orbitA: {
+        enabled: true,
+        voicePresetId: "duskPad",
+        motion: {
+          polyrhythmPresetId: "4_4",
+          arpPresetId: "down",
+          rate: "2n",
+          patternOn: true,
+        },
+        mix: { gain: 0.38, pan: -0.08, muted: false },
+      },
+      orbitB: {
+        enabled: true,
+        voicePresetId: "velvetBell",
+        motion: {
+          polyrhythmPresetId: "9_8",
+          arpPresetId: "random",
+          rate: "4n",
+          patternOn: true,
+        },
+        mix: { gain: 0.24, pan: 0.10, muted: false },
+      },
+      orbitC: {
+        enabled: true,
+        voicePresetId: "orbitTick",
+        motion: {
+          polyrhythmPresetId: "7_8",
+          arpPresetId: "steps",
+          rate: "16n",
+          patternOn: true,
+        },
+        mix: { gain: 0.10, pan: 0.16, muted: false },
+      },
+    },
+  },
+
+  // =========================================================
+  // Additional emotion-driven scenes (10 more)
+  // =========================================================
+  {
+    id: "twilight_lattice",
+    label: "Twilight Lattice",
+    description: "Interlocking steps that feel elegant and inevitable.",
+    vibeTags: ["balanced", "mechanical", "hypnotic"],
+    orbits: {
+      orbitA: {
+        enabled: true,
+        voicePresetId: "carbonPluck",
+        motion: {
+          polyrhythmPresetId: "4_4",
+          arpPresetId: "downUp",
+          rate: "16n",
+          patternOn: true,
+        },
+        mix: { gain: 0.50, pan: -0.20, muted: false },
+      },
+      orbitB: {
+        enabled: true,
+        voicePresetId: "glassPulse",
+        motion: {
+          polyrhythmPresetId: "5_8",
+          arpPresetId: "upDown",
+          rate: "8n",
+          patternOn: true,
+        },
+        mix: { gain: 0.30, pan: 0.18, muted: false },
+      },
+      orbitC: {
+        enabled: true,
+        voicePresetId: "whisperAir",
+        motion: {
+          polyrhythmPresetId: "6_8",
+          arpPresetId: "off",
+          rate: "1n",
+          patternOn: false,
+        },
+        mix: { gain: 0.16, pan: 0.03, muted: false },
       },
     },
   },
 
   {
-    id: "crystal_pulse",
-    label: "Crystal Pulse",
-    description: "Tight bell ticks with a clean rhythmic spine.",
+    id: "sunlit_springs",
+    label: "Sunlit Springs",
+    description: "Playful bouncing motion—sparkly but not harsh.",
+    vibeTags: ["playful", "bright", "bouncy"],
     orbits: {
       orbitA: {
         enabled: true,
-        voicePresetId: "glassBell",
-        motion: { timeSig: "4/4", arp: "up", rate: "16n" },
-        mix: { gain: 0.66, pan: -0.18, muted: false },
-      },
-      orbitB: {
-        enabled: true,
-        voicePresetId: "softPluck",
-        motion: { timeSig: "4/4", arp: "downUp", rate: "8n" },
-        mix: { gain: 0.62, pan: 0.14, muted: false },
-      },
-      orbitC: {
-        enabled: false,
-        voicePresetId: "violetAir",
-        motion: { timeSig: "4/4", arp: "off", rate: "8n" },
-        mix: { gain: 0.4, pan: 0.05, muted: true },
-      },
-    },
-  },
-
-  {
-    id: "climbing_light",
-    label: "Climbing Light",
-    description: "Ascending steps that feel like rising energy.",
-    orbits: {
-      orbitA: {
-        enabled: true,
-        voicePresetId: "softPluck",
-        motion: { timeSig: "5/4", arp: "upDown", rate: "16n" },
-        mix: { gain: 0.62, pan: -0.15, muted: false },
-      },
-      orbitB: {
-        enabled: true,
-        voicePresetId: "glassBell",
-        motion: { timeSig: "7/4", arp: "random", rate: "8n" },
-        mix: { gain: 0.58, pan: 0.18, muted: false },
-      },
-      orbitC: {
-        enabled: true,
-        voicePresetId: "violetAir",
-        motion: { timeSig: "9/8", arp: "up", rate: "8n" },
-        mix: { gain: 0.42, pan: 0.05, muted: false },
-      },
-    },
-  },
-
-  {
-    id: "shimmer_drift",
-    label: "Shimmer Drift",
-    description: "Soft floating motion that never fully resolves.",
-    orbits: {
-      orbitA: {
-        enabled: true,
-        voicePresetId: "violetAir",
-        motion: { timeSig: "6/4", arp: "upDown", rate: "8n" },
+        voicePresetId: "cedarPluck",
+        motion: {
+          polyrhythmPresetId: "6_8",
+          arpPresetId: "up",
+          rate: "16n",
+          patternOn: true,
+        },
         mix: { gain: 0.52, pan: -0.12, muted: false },
       },
       orbitB: {
         enabled: true,
-        voicePresetId: "glassBell",
-        motion: { timeSig: "11/8", arp: "random", rate: "8n" },
-        mix: { gain: 0.48, pan: 0.12, muted: false },
+        voicePresetId: "prismBell",
+        motion: {
+          polyrhythmPresetId: "3_4",
+          arpPresetId: "upDown",
+          rate: "8n",
+          patternOn: true,
+        },
+        mix: { gain: 0.44, pan: 0.14, muted: false },
       },
       orbitC: {
         enabled: false,
-        voicePresetId: "softPluck",
-        motion: { timeSig: "4/4", arp: "off", rate: "16n" },
-        mix: { gain: 0.35, pan: 0, muted: true },
-      },
-    },
-  },
-
-  {
-    id: "velvet_drift",
-    label: "Velvet Drift",
-    description: "Moody slow motion with a soft, intimate pull.",
-    orbits: {
-      orbitA: {
-        enabled: true,
-        voicePresetId: "violetAir",
-        motion: { timeSig: "4/4", arp: "down", rate: "2n" },
-        mix: { gain: 0.55, pan: -0.08, muted: false },
-      },
-      orbitB: {
-        enabled: false,
-        voicePresetId: "softPluck",
-        motion: { timeSig: "7/4", arp: "off", rate: "4n" },
-        mix: { gain: 0.35, pan: 0.1, muted: true },
-      },
-      orbitC: {
-        enabled: true,
-        voicePresetId: "glassBell",
-        motion: { timeSig: "9/8", arp: "random", rate: "4n" },
-        mix: { gain: 0.45, pan: 0.15, muted: false },
-      },
-    },
-  },
-
-  // --- NEW: expanded set (emotion-driven) ---
-
-  {
-    id: "glinting_halo",
-    label: "Glinting Halo",
-    description: "A soft ring of sparkles orbiting the center—wide and elegant.",
-    orbits: {
-      orbitA: {
-        enabled: true,
-        voicePresetId: "glassBell",
-        motion: { timeSig: "6/8", arp: "upDown", rate: "8n" },
-        mix: { gain: 0.58, pan: -0.22, muted: false },
-      },
-      orbitB: {
-        enabled: true,
-        voicePresetId: "hollowChime",
-        motion: { timeSig: "9/8", arp: "random", rate: "8n" },
-        mix: { gain: 0.5, pan: 0.22, muted: false },
-      },
-      orbitC: {
-        enabled: true,
-        voicePresetId: "violetAir",
-        motion: { timeSig: "12/8", arp: "up", rate: "4n" },
-        mix: { gain: 0.4, pan: 0.0, muted: false },
-      },
-    },
-  },
-
-  {
-    id: "clockwork_fireflies",
-    label: "Clockwork Fireflies",
-    description: "Tiny rhythmic flashes—precise, quick, and twinkly.",
-    orbits: {
-      orbitA: {
-        enabled: true,
-        voicePresetId: "glassBell",
-        motion: { timeSig: "7/8", arp: "up", rate: "16n" },
-        mix: { gain: 0.6, pan: -0.18, muted: false },
-      },
-      orbitB: {
-        enabled: true,
-        voicePresetId: "softPluck",
-        motion: { timeSig: "5/8", arp: "down", rate: "16n" },
-        mix: { gain: 0.52, pan: 0.14, muted: false },
-      },
-      orbitC: {
-        enabled: false,
-        voicePresetId: "mistPad",
-        motion: { timeSig: "4/4", arp: "off", rate: "8n" },
-        mix: { gain: 0.35, pan: 0, muted: true },
-      },
-    },
-  },
-
-  {
-    id: "weightless_steps",
-    label: "Weightless Steps",
-    description: "A gentle stepping illusion—forward motion without urgency.",
-    orbits: {
-      orbitA: {
-        enabled: true,
-        voicePresetId: "softPluck",
-        motion: { timeSig: "5/4", arp: "upDown", rate: "8n" },
-        mix: { gain: 0.55, pan: -0.12, muted: false },
-      },
-      orbitB: {
-        enabled: true,
-        voicePresetId: "hollowChime",
-        motion: { timeSig: "7/4", arp: "downUp", rate: "8n" },
-        mix: { gain: 0.52, pan: 0.12, muted: false },
-      },
-      orbitC: {
-        enabled: true,
-        voicePresetId: "violetAir",
-        motion: { timeSig: "4/4", arp: "down", rate: "2n" },
-        mix: { gain: 0.38, pan: 0.0, muted: false },
-      },
-    },
-  },
-
-  {
-    id: "tide_and_tension",
-    label: "Tide & Tension",
-    description: "A push-pull sway—like waves meeting resistance.",
-    orbits: {
-      orbitA: {
-        enabled: true,
-        voicePresetId: "mistPad",
-        motion: { timeSig: "6/4", arp: "down", rate: "2n" },
-        mix: { gain: 0.5, pan: -0.1, muted: false },
-      },
-      orbitB: {
-        enabled: true,
-        voicePresetId: "softPluck",
-        motion: { timeSig: "11/8", arp: "random", rate: "8n" },
-        mix: { gain: 0.46, pan: 0.12, muted: false },
-      },
-      orbitC: {
-        enabled: true,
-        voicePresetId: "glassBell",
-        motion: { timeSig: "9/8", arp: "up", rate: "8n" },
-        mix: { gain: 0.42, pan: 0.08, muted: false },
-      },
-    },
-  },
-
-  {
-    id: "lantern_cascade",
-    label: "Lantern Cascade",
-    description: "Falling lights—soft cascades that feel ceremonial.",
-    orbits: {
-      orbitA: {
-        enabled: true,
-        voicePresetId: "hollowChime",
-        motion: { timeSig: "9/8", arp: "down", rate: "8n" },
-        mix: { gain: 0.55, pan: -0.2, muted: false },
-      },
-      orbitB: {
-        enabled: true,
-        voicePresetId: "glassBell",
-        motion: { timeSig: "6/8", arp: "random", rate: "16n" },
-        mix: { gain: 0.5, pan: 0.18, muted: false },
-      },
-      orbitC: {
-        enabled: true,
-        voicePresetId: "violetAir",
-        motion: { timeSig: "12/8", arp: "upDown", rate: "4n" },
-        mix: { gain: 0.4, pan: 0.0, muted: false },
-      },
-    },
-  },
-
-  {
-    id: "frosted_geometry",
-    label: "Frosted Geometry",
-    description: "Clean, icy, and angular—precision shapes in motion.",
-    orbits: {
-      orbitA: {
-        enabled: true,
-        voicePresetId: "digitalGlass",
-        motion: { timeSig: "7/8", arp: "up", rate: "16n" },
-        mix: { gain: 0.62, pan: -0.18, muted: false },
-      },
-      orbitB: {
-        enabled: true,
-        voicePresetId: "softPluck",
-        motion: { timeSig: "11/8", arp: "downUp", rate: "16n" },
-        mix: { gain: 0.52, pan: 0.16, muted: false },
-      },
-      orbitC: {
-        enabled: false,
-        voicePresetId: "mistPad",
-        motion: { timeSig: "4/4", arp: "off", rate: "8n" },
-        mix: { gain: 0.35, pan: 0, muted: true },
-      },
-    },
-  },
-
-  {
-    id: "embers_in_orbit",
-    label: "Embers in Orbit",
-    description: "Slow glowing sparks—warm, drifting, late-night energy.",
-    orbits: {
-      orbitA: {
-        enabled: true,
-        voicePresetId: "warmBell",
-        motion: { timeSig: "4/4", arp: "down", rate: "2n" },
-        mix: { gain: 0.5, pan: -0.08, muted: false },
-      },
-      orbitB: {
-        enabled: true,
-        voicePresetId: "mistPad",
-        motion: { timeSig: "6/4", arp: "upDown", rate: "4n" },
-        mix: { gain: 0.46, pan: 0.1, muted: false },
-      },
-      orbitC: {
-        enabled: true,
-        voicePresetId: "glassBell",
-        motion: { timeSig: "9/8", arp: "random", rate: "8n" },
-        mix: { gain: 0.38, pan: 0.12, muted: false },
-      },
-    },
-  },
-
-  {
-    id: "neon_breath",
-    label: "Neon Breath",
-    description: "A pulsing inhale/exhale feel—soft glow, slow life.",
-    orbits: {
-      orbitA: {
-        enabled: true,
-        voicePresetId: "violetAir",
-        motion: { timeSig: "4/4", arp: "down", rate: "1n" },
-        mix: { gain: 0.48, pan: -0.1, muted: false },
-      },
-      orbitB: {
-        enabled: true,
-        voicePresetId: "mistPad",
-        motion: { timeSig: "7/4", arp: "upDown", rate: "2n" },
-        mix: { gain: 0.42, pan: 0.12, muted: false },
-      },
-      orbitC: {
-        enabled: false,
-        voicePresetId: "softPluck",
-        motion: { timeSig: "4/4", arp: "off", rate: "8n" },
-        mix: { gain: 0.3, pan: 0, muted: true },
-      },
-    },
-  },
-
-  {
-    id: "aurora_ladders",
-    label: "Aurora Ladders",
-    description: "Stacked ascent lines—luminous climbing motion.",
-    orbits: {
-      orbitA: {
-        enabled: true,
-        voicePresetId: "softPluck",
-        motion: { timeSig: "5/4", arp: "up", rate: "16n" },
-        mix: { gain: 0.6, pan: -0.16, muted: false },
-      },
-      orbitB: {
-        enabled: true,
-        voicePresetId: "digitalGlass",
-        motion: { timeSig: "7/4", arp: "random", rate: "8n" },
-        mix: { gain: 0.54, pan: 0.18, muted: false },
-      },
-      orbitC: {
-        enabled: true,
-        voicePresetId: "violetAir",
-        motion: { timeSig: "9/8", arp: "upDown", rate: "4n" },
-        mix: { gain: 0.4, pan: 0.06, muted: false },
+        voicePresetId: "starlightMetal",
+        motion: {
+          polyrhythmPresetId: "4_4",
+          arpPresetId: "random",
+          rate: "8n",
+          patternOn: false,
+        },
+        mix: { gain: 0.12, pan: 0.10, muted: true },
       },
     },
   },
@@ -382,207 +337,503 @@ export const ORBIT_MASTER_PRESETS = [
   {
     id: "cathedral_spark",
     label: "Cathedral Spark",
-    description: "Wide, reverent space with occasional bell flickers.",
+    description: "Big, slow bell gestures with a sacred drifting undertone.",
+    vibeTags: ["sacred", "wide", "slow-bloom"],
     orbits: {
       orbitA: {
         enabled: true,
-        voicePresetId: "hollowChime",
-        motion: { timeSig: "6/4", arp: "down", rate: "2n" },
-        mix: { gain: 0.52, pan: -0.18, muted: false },
+        voicePresetId: "haloPad",
+        motion: {
+          polyrhythmPresetId: "4_4",
+          arpPresetId: "drone",
+          rate: "1n",
+          patternOn: true,
+        },
+        mix: { gain: 0.32, pan: -0.10, muted: false },
       },
       orbitB: {
-        enabled: false,
-        voicePresetId: "softPluck",
-        motion: { timeSig: "4/4", arp: "off", rate: "8n" },
-        mix: { gain: 0.3, pan: 0.12, muted: true },
+        enabled: true,
+        voicePresetId: "velvetBell",
+        motion: {
+          polyrhythmPresetId: "12_8",
+          arpPresetId: "up",
+          rate: "4n",
+          patternOn: true,
+        },
+        mix: { gain: 0.38, pan: 0.10, muted: false },
       },
       orbitC: {
         enabled: true,
-        voicePresetId: "violetAir",
-        motion: { timeSig: "12/8", arp: "upDown", rate: "1n" },
-        mix: { gain: 0.42, pan: 0.06, muted: false },
+        voicePresetId: "whisperAir",
+        motion: {
+          polyrhythmPresetId: "6_8",
+          arpPresetId: "off",
+          rate: "1n",
+          patternOn: false,
+        },
+        mix: { gain: 0.14, pan: 0.02, muted: false },
       },
     },
   },
 
   {
-    id: "glass_rain",
-    label: "Glass Rain",
-    description: "Randomized droplets—sparkly, shimmering, and unpredictable.",
+    id: "clockwork_gleam",
+    label: "Clockwork Gleam",
+    description: "Precise mechanical motion—tight, clean, satisfying.",
+    vibeTags: ["tight", "precise", "forward"],
     orbits: {
       orbitA: {
         enabled: true,
-        voicePresetId: "glassBell",
-        motion: { timeSig: "11/8", arp: "random", rate: "16n" },
-        mix: { gain: 0.62, pan: -0.18, muted: false },
+        voicePresetId: "orbitTick",
+        motion: {
+          polyrhythmPresetId: "4_4",
+          arpPresetId: "steps",
+          rate: "16n",
+          patternOn: true,
+        },
+        mix: { gain: 0.14, pan: -0.22, muted: false },
       },
       orbitB: {
         enabled: true,
-        voicePresetId: "digitalGlass",
-        motion: { timeSig: "7/8", arp: "random", rate: "16n" },
-        mix: { gain: 0.52, pan: 0.16, muted: false },
+        voicePresetId: "carbonPluck",
+        motion: {
+          polyrhythmPresetId: "7_8",
+          arpPresetId: "downUp",
+          rate: "16n",
+          patternOn: true,
+        },
+        mix: { gain: 0.46, pan: 0.10, muted: false },
       },
       orbitC: {
         enabled: true,
-        voicePresetId: "mistPad",
-        motion: { timeSig: "4/4", arp: "down", rate: "2n" },
-        mix: { gain: 0.36, pan: 0.0, muted: false },
+        voicePresetId: "glassPulse",
+        motion: {
+          polyrhythmPresetId: "5_4",
+          arpPresetId: "pulse",
+          rate: "8n",
+          patternOn: true,
+        },
+        mix: { gain: 0.22, pan: 0.22, muted: false },
       },
     },
   },
 
   {
-    id: "slow_gravity",
-    label: "Slow Gravity",
-    description: "Heavy slow pull—minimal notes, maximum weight.",
+    id: "violet_mirage",
+    label: "Violet Mirage",
+    description: "Soft surreal motion—feels like light bending in fog.",
+    vibeTags: ["surreal", "soft", "drifting"],
     orbits: {
       orbitA: {
         enabled: true,
-        voicePresetId: "mistPad",
-        motion: { timeSig: "4/4", arp: "down", rate: "1n" },
-        mix: { gain: 0.52, pan: -0.08, muted: false },
-      },
-      orbitB: {
-        enabled: false,
-        voicePresetId: "softPluck",
-        motion: { timeSig: "4/4", arp: "off", rate: "8n" },
-        mix: { gain: 0.25, pan: 0.1, muted: true },
-      },
-      orbitC: {
-        enabled: true,
-        voicePresetId: "warmBell",
-        motion: { timeSig: "9/8", arp: "random", rate: "2n" },
-        mix: { gain: 0.4, pan: 0.12, muted: false },
-      },
-    },
-  },
-
-  {
-    id: "spiral_dance",
-    label: "Spiral Dance",
-    description: "A swirling up/down illusion—alive and circular.",
-    orbits: {
-      orbitA: {
-        enabled: true,
-        voicePresetId: "glassBell",
-        motion: { timeSig: "6/8", arp: "upDown", rate: "16n" },
-        mix: { gain: 0.6, pan: -0.18, muted: false },
+        voicePresetId: "duskPad",
+        motion: {
+          polyrhythmPresetId: "9_8",
+          arpPresetId: "shimmer",
+          rate: "2n",
+          patternOn: true,
+        },
+        mix: { gain: 0.34, pan: -0.10, muted: false },
       },
       orbitB: {
         enabled: true,
-        voicePresetId: "softPluck",
-        motion: { timeSig: "5/8", arp: "downUp", rate: "16n" },
-        mix: { gain: 0.5, pan: 0.14, muted: false },
-      },
-      orbitC: {
-        enabled: true,
-        voicePresetId: "hollowChime",
-        motion: { timeSig: "9/8", arp: "random", rate: "8n" },
-        mix: { gain: 0.42, pan: 0.08, muted: false },
-      },
-    },
-  },
-
-  {
-    id: "distant_signal",
-    label: "Distant Signal",
-    description: "Sparse pulses—like a beacon calling from far away.",
-    orbits: {
-      orbitA: {
-        enabled: true,
-        voicePresetId: "digitalGlass",
-        motion: { timeSig: "7/4", arp: "up", rate: "2n" },
-        mix: { gain: 0.45, pan: -0.14, muted: false },
-      },
-      orbitB: {
-        enabled: false,
-        voicePresetId: "softPluck",
-        motion: { timeSig: "4/4", arp: "off", rate: "8n" },
-        mix: { gain: 0.22, pan: 0.12, muted: true },
-      },
-      orbitC: {
-        enabled: true,
-        voicePresetId: "mistPad",
-        motion: { timeSig: "4/4", arp: "down", rate: "1n" },
-        mix: { gain: 0.4, pan: 0.06, muted: false },
-      },
-    },
-  },
-
-  {
-    id: "hushed_flicker",
-    label: "Hushed Flicker",
-    description: "Low-profile motion—small glimmers under the surface.",
-    orbits: {
-      orbitA: {
-        enabled: true,
-        voicePresetId: "hollowChime",
-        motion: { timeSig: "5/4", arp: "down", rate: "4n" },
-        mix: { gain: 0.42, pan: -0.12, muted: false },
-      },
-      orbitB: {
-        enabled: true,
-        voicePresetId: "mistPad",
-        motion: { timeSig: "6/4", arp: "upDown", rate: "1n" },
-        mix: { gain: 0.4, pan: 0.12, muted: false },
+        voicePresetId: "velvetBell",
+        motion: {
+          polyrhythmPresetId: "7_4",
+          arpPresetId: "random",
+          rate: "8n",
+          patternOn: true,
+        },
+        mix: { gain: 0.28, pan: 0.12, muted: false },
       },
       orbitC: {
         enabled: false,
-        voicePresetId: "softPluck",
-        motion: { timeSig: "4/4", arp: "off", rate: "8n" },
-        mix: { gain: 0.25, pan: 0, muted: true },
+        voicePresetId: "starlightMetal",
+        motion: {
+          polyrhythmPresetId: "4_4",
+          arpPresetId: "random",
+          rate: "16n",
+          patternOn: false,
+        },
+        mix: { gain: 0.10, pan: 0.18, muted: true },
       },
     },
   },
 
   {
-    id: "storm_of_glass",
-    label: "Storm of Glass",
-    description: "Chaotic glitter rain—high motion, high sparkle.",
+    id: "silver_current",
+    label: "Silver Current",
+    description: "Smooth flowing motion—steady, glossy, and continuous.",
+    vibeTags: ["flowing", "steady", "glossy"],
     orbits: {
       orbitA: {
         enabled: true,
-        voicePresetId: "digitalGlass",
-        motion: { timeSig: "11/8", arp: "random", rate: "16n" },
-        mix: { gain: 0.65, pan: -0.18, muted: false },
+        voicePresetId: "cedarPluck",
+        motion: {
+          polyrhythmPresetId: "6_8",
+          arpPresetId: "upDown",
+          rate: "16n",
+          patternOn: true,
+        },
+        mix: { gain: 0.44, pan: -0.16, muted: false },
       },
       orbitB: {
         enabled: true,
-        voicePresetId: "glassBell",
-        motion: { timeSig: "13/8", arp: "random", rate: "16n" },
-        mix: { gain: 0.56, pan: 0.18, muted: false },
+        voicePresetId: "glassPulse",
+        motion: {
+          polyrhythmPresetId: "9_8",
+          arpPresetId: "pulse",
+          rate: "16n",
+          patternOn: true,
+        },
+        mix: { gain: 0.24, pan: 0.16, muted: false },
       },
       orbitC: {
         enabled: true,
-        voicePresetId: "softPluck",
-        motion: { timeSig: "7/8", arp: "downUp", rate: "16n" },
-        mix: { gain: 0.44, pan: 0.1, muted: false },
+        voicePresetId: "whisperAir",
+        motion: {
+          polyrhythmPresetId: "4_4",
+          arpPresetId: "off",
+          rate: "1n",
+          patternOn: false,
+        },
+        mix: { gain: 0.12, pan: 0.02, muted: false },
       },
     },
   },
 
   {
-    id: "midnight_bloom",
-    label: "Midnight Bloom",
-    description: "Dark softness with slow shimmer—intimate and cinematic.",
+    id: "ember_waltz",
+    label: "Ember Waltz",
+    description: "A warm 3-feel sway with a slow glowing undertone.",
+    vibeTags: ["warm", "sway", "romantic"],
     orbits: {
       orbitA: {
         enabled: true,
-        voicePresetId: "violetAir",
-        motion: { timeSig: "4/4", arp: "down", rate: "1n" },
-        mix: { gain: 0.5, pan: -0.08, muted: false },
+        voicePresetId: "cedarPluck",
+        motion: {
+          polyrhythmPresetId: "3_4",
+          arpPresetId: "down",
+          rate: "8n",
+          patternOn: true,
+        },
+        mix: { gain: 0.46, pan: -0.14, muted: false },
       },
       orbitB: {
         enabled: true,
-        voicePresetId: "mistPad",
-        motion: { timeSig: "7/4", arp: "upDown", rate: "2n" },
-        mix: { gain: 0.42, pan: 0.1, muted: false },
+        voicePresetId: "velvetBell",
+        motion: {
+          polyrhythmPresetId: "6_8",
+          arpPresetId: "up",
+          rate: "8n",
+          patternOn: true,
+        },
+        mix: { gain: 0.30, pan: 0.14, muted: false },
       },
       orbitC: {
         enabled: true,
-        voicePresetId: "warmBell",
-        motion: { timeSig: "9/8", arp: "random", rate: "2n" },
-        mix: { gain: 0.38, pan: 0.12, muted: false },
+        voicePresetId: "haloPad",
+        motion: {
+          polyrhythmPresetId: "4_4",
+          arpPresetId: "drone",
+          rate: "1n",
+          patternOn: true,
+        },
+        mix: { gain: 0.18, pan: 0.00, muted: false },
+      },
+    },
+  },
+
+  {
+    id: "aurora_glass",
+    label: "Aurora Glass",
+    description: "Bright glassy motion—sparkles with forward energy.",
+    vibeTags: ["bright", "glassy", "driving"],
+    orbits: {
+      orbitA: {
+        enabled: true,
+        voicePresetId: "glassPulse",
+        motion: {
+          polyrhythmPresetId: "4_4",
+          arpPresetId: "pulse",
+          rate: "16n",
+          patternOn: true,
+        },
+        mix: { gain: 0.30, pan: -0.18, muted: false },
+      },
+      orbitB: {
+        enabled: true,
+        voicePresetId: "prismBell",
+        motion: {
+          polyrhythmPresetId: "5_4",
+          arpPresetId: "upDown",
+          rate: "8n",
+          patternOn: true,
+        },
+        mix: { gain: 0.44, pan: 0.16, muted: false },
+      },
+      orbitC: {
+        enabled: true,
+        voicePresetId: "orbitTick",
+        motion: {
+          polyrhythmPresetId: "7_8",
+          arpPresetId: "steps",
+          rate: "16n",
+          patternOn: true,
+        },
+        mix: { gain: 0.10, pan: 0.22, muted: false },
+      },
+    },
+  },
+
+  {
+    id: "deep_orbit",
+    label: "Deep Orbit",
+    description: "Slow gravitational pull—dark pad + sparse accents.",
+    vibeTags: ["deep", "slow", "weighty"],
+    orbits: {
+      orbitA: {
+        enabled: true,
+        voicePresetId: "duskPad",
+        motion: {
+          polyrhythmPresetId: "4_4",
+          arpPresetId: "drone",
+          rate: "1n",
+          patternOn: true,
+        },
+        mix: { gain: 0.34, pan: -0.10, muted: false },
+      },
+      orbitB: {
+        enabled: true,
+        voicePresetId: "velvetBell",
+        motion: {
+          polyrhythmPresetId: "7_4",
+          arpPresetId: "random",
+          rate: "2n",
+          patternOn: true,
+        },
+        mix: { gain: 0.20, pan: 0.12, muted: false },
+      },
+      orbitC: {
+        enabled: false,
+        voicePresetId: "orbitTick",
+        motion: {
+          polyrhythmPresetId: "5_8",
+          arpPresetId: "steps",
+          rate: "16n",
+          patternOn: false,
+        },
+        mix: { gain: 0.08, pan: 0.20, muted: true },
+      },
+    },
+  },
+
+  {
+    id: "shimmerfield",
+    label: "Shimmerfield",
+    description: "A soft shimmering plane with gentle bell flickers.",
+    vibeTags: ["shimmer", "soft", "wide"],
+    orbits: {
+      orbitA: {
+        enabled: true,
+        voicePresetId: "haloPad",
+        motion: {
+          polyrhythmPresetId: "6_8",
+          arpPresetId: "shimmer",
+          rate: "2n",
+          patternOn: true,
+        },
+        mix: { gain: 0.30, pan: -0.12, muted: false },
+      },
+      orbitB: {
+        enabled: true,
+        voicePresetId: "velvetBell",
+        motion: {
+          polyrhythmPresetId: "11_8",
+          arpPresetId: "random",
+          rate: "8n",
+          patternOn: true,
+        },
+        mix: { gain: 0.22, pan: 0.12, muted: false },
+      },
+      orbitC: {
+        enabled: true,
+        voicePresetId: "whisperAir",
+        motion: {
+          polyrhythmPresetId: "4_4",
+          arpPresetId: "off",
+          rate: "1n",
+          patternOn: false,
+        },
+        mix: { gain: 0.14, pan: 0.02, muted: false },
+      },
+    },
+  },
+
+  {
+    id: "starlit_edges",
+    label: "Starlit Edges",
+    description: "Tiny metallic glints around a steady rhythmic frame.",
+    vibeTags: ["sparkle", "edges", "detail"],
+    orbits: {
+      orbitA: {
+        enabled: true,
+        voicePresetId: "carbonPluck",
+        motion: {
+          polyrhythmPresetId: "4_4",
+          arpPresetId: "downUp",
+          rate: "16n",
+          patternOn: true,
+        },
+        mix: { gain: 0.40, pan: -0.18, muted: false },
+      },
+      orbitB: {
+        enabled: true,
+        voicePresetId: "starlightMetal",
+        motion: {
+          polyrhythmPresetId: "9_8",
+          arpPresetId: "random",
+          rate: "8n",
+          patternOn: true,
+        },
+        mix: { gain: 0.12, pan: 0.18, muted: false },
+      },
+      orbitC: {
+        enabled: true,
+        voicePresetId: "whisperAir",
+        motion: {
+          polyrhythmPresetId: "6_8",
+          arpPresetId: "off",
+          rate: "1n",
+          patternOn: false,
+        },
+        mix: { gain: 0.10, pan: 0.02, muted: false },
+      },
+    },
+  },
+
+  {
+    id: "restless_moons",
+    label: "Restless Moons",
+    description: "Uneasy interlock—odd meters that feel alive and tense.",
+    vibeTags: ["tense", "alive", "odd-meter"],
+    orbits: {
+      orbitA: {
+        enabled: true,
+        voicePresetId: "glassPulse",
+        motion: {
+          polyrhythmPresetId: "7_8",
+          arpPresetId: "upDown",
+          rate: "16n",
+          patternOn: true,
+        },
+        mix: { gain: 0.26, pan: -0.18, muted: false },
+      },
+      orbitB: {
+        enabled: true,
+        voicePresetId: "carbonPluck",
+        motion: {
+          polyrhythmPresetId: "5_8",
+          arpPresetId: "downUp",
+          rate: "16n",
+          patternOn: true,
+        },
+        mix: { gain: 0.42, pan: 0.14, muted: false },
+      },
+      orbitC: {
+        enabled: true,
+        voicePresetId: "orbitTick",
+        motion: {
+          polyrhythmPresetId: "11_8",
+          arpPresetId: "steps",
+          rate: "16n",
+          patternOn: true,
+        },
+        mix: { gain: 0.10, pan: 0.22, muted: false },
+      },
+    },
+  },
+
+  {
+    id: "gentle_gears",
+    label: "Gentle Gears",
+    description: "Mechanical but kind—tight steps with softened tone.",
+    vibeTags: ["mechanical", "gentle", "steady"],
+    orbits: {
+      orbitA: {
+        enabled: true,
+        voicePresetId: "cedarPluck",
+        motion: {
+          polyrhythmPresetId: "4_4",
+          arpPresetId: "steps",
+          rate: "16n",
+          patternOn: true,
+        },
+        mix: { gain: 0.44, pan: -0.16, muted: false },
+      },
+      orbitB: {
+        enabled: true,
+        voicePresetId: "velvetBell",
+        motion: {
+          polyrhythmPresetId: "6_4",
+          arpPresetId: "up",
+          rate: "8n",
+          patternOn: true,
+        },
+        mix: { gain: 0.26, pan: 0.14, muted: false },
+      },
+      orbitC: {
+        enabled: false,
+        voicePresetId: "whisperAir",
+        motion: {
+          polyrhythmPresetId: "4_4",
+          arpPresetId: "off",
+          rate: "1n",
+          patternOn: false,
+        },
+        mix: { gain: 0.12, pan: 0.00, muted: true },
+      },
+    },
+  },
+
+  {
+    id: "quiet_horizon",
+    label: "Quiet Horizon",
+    description: "Minimal motion—just enough to feel alive, never busy.",
+    vibeTags: ["minimal", "calm", "spacious"],
+    orbits: {
+      orbitA: {
+        enabled: true,
+        voicePresetId: "haloPad",
+        motion: {
+          polyrhythmPresetId: "4_4",
+          arpPresetId: "drone",
+          rate: "1n",
+          patternOn: true,
+        },
+        mix: { gain: 0.26, pan: -0.10, muted: false },
+      },
+      orbitB: {
+        enabled: true,
+        voicePresetId: "velvetBell",
+        motion: {
+          polyrhythmPresetId: "12_8",
+          arpPresetId: "random",
+          rate: "2n",
+          patternOn: true,
+        },
+        mix: { gain: 0.16, pan: 0.10, muted: false },
+      },
+      orbitC: {
+        enabled: true,
+        voicePresetId: "whisperAir",
+        motion: {
+          polyrhythmPresetId: "4_4",
+          arpPresetId: "off",
+          rate: "1n",
+          patternOn: false,
+        },
+        mix: { gain: 0.10, pan: 0.02, muted: false },
       },
     },
   },

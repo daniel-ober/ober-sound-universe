@@ -1,5 +1,6 @@
 // src/engine/omseEngine.js
 import * as Tone from "tone";
+import { buildOrbitVoice } from "./orbitVoiceFactory";
 
 /**
  * Helper to build a smoothed, 0–1 meter
@@ -38,43 +39,6 @@ function parseTimeSig(sig) {
 function safeTimeSigString(sig) {
   const { steps, denom } = parseTimeSig(sig);
   return `${steps}/${denom}`;
-}
-
-/**
- * Build a synth instance from a "voice preset"
- * Supports:
- * - engine: "synth" => Tone.Synth wrapped in PolySynth
- * - engine: "fm"    => Tone.FMSynth wrapped in PolySynth
- */
-function buildOrbitSynthFromPreset(voicePreset) {
-  const engine = voicePreset?.engine || "synth";
-  const params = voicePreset?.params || {};
-
-  if (engine === "fm") {
-    return new Tone.PolySynth(Tone.FMSynth, {
-      harmonicity: params.harmonicity ?? 2,
-      modulationIndex: params.modulationIndex ?? 5,
-      envelope: {
-        attack: params.envelope?.attack ?? 0.01,
-        decay: params.envelope?.decay ?? 0.2,
-        sustain: params.envelope?.sustain ?? 0.3,
-        release: params.envelope?.release ?? 0.6,
-      },
-    });
-  }
-
-  // default "synth"
-  return new Tone.PolySynth(Tone.Synth, {
-    oscillator: {
-      type: params.oscillator?.type ?? "sine",
-    },
-    envelope: {
-      attack: params.envelope?.attack ?? 0.01,
-      decay: params.envelope?.decay ?? 0.25,
-      sustain: params.envelope?.sustain ?? 0.5,
-      release: params.envelope?.release ?? 0.6,
-    },
-  });
 }
 
 /**
@@ -427,7 +391,9 @@ class OMSEEngine {
       orbit.synth?.disconnect?.();
       orbit.synth?.dispose?.();
 
-      const synth = buildOrbitSynthFromPreset(voicePreset);
+      // ✅ FIX: this used to call a missing function.
+      // We now build from orbitVoiceFactory (stable + centralized).
+      const synth = buildOrbitVoice(voicePreset);
 
       const filterCfg = voicePreset?.params?.filter;
       if (filterCfg) {

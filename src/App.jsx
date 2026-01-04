@@ -6,9 +6,13 @@ import { TopBar } from "./components/TopBar";
 import { UniverseLayout } from "./components/UniverseLayout";
 import { MasterSpectrum } from "./components/MasterSpectrum";
 
-import { MASTER_PRESETS } from "./presets/masterPresets";
+import { MASTER_PRESETS } from "./presets/master/masterPresets";
 import { ORBIT_MASTER_PRESETS } from "./presets/orbits/orbitMasterPresets";
 import { ORBIT_VOICE_PRESETS } from "./presets/orbits/orbitVoicePresets";
+
+// ✅ NEW: resolver libraries
+import { ARP_PRESETS } from "./presets/orbits/motion/arpPresets";
+import { POLYRHYTHM_PRESETS } from "./presets/orbits/motion/polyrhythmPresets";
 
 import "./App.css";
 
@@ -36,6 +40,57 @@ function clampBpm(v) {
   const n = Number(v);
   if (!Number.isFinite(n)) return 90;
   return Math.max(20, Math.min(300, n));
+}
+
+/**
+ * ✅ Resolve motion for BOTH:
+ * - New schema: { polyrhythmPresetId, arpPresetId }
+ * - Old schema: { timeSig, arp }
+ *
+ * Returns: { timeSig, arp, rate, patternOn }
+ */
+function resolveOrbitMotion(motion = {}) {
+  // time signature
+  const timeSig =
+    (motion.polyrhythmPresetId &&
+      POLYRHYTHM_PRESETS?.[motion.polyrhythmPresetId]?.timeSig) ||
+    motion.timeSig ||
+    "4/4";
+
+  // arp mode
+  const arpPreset = motion.arpPresetId ? ARP_PRESETS?.[motion.arpPresetId] : null;
+
+  // Engine ONLY supports: off/up/down/upDown/downUp/random.
+  // So "feel" arps must map to one of those via preset.mode.
+  let arp =
+    (arpPreset?.mode || motion.arp || "off")?.toString?.() || "off";
+
+  // If a preset uses a "feel" mode that your engine doesn't implement,
+  // we gracefully map it to an engine-safe mode.
+  const engineSafe = new Set(["off", "up", "down", "upDown", "downUp", "random"]);
+  if (!engineSafe.has(arp)) {
+    // sensible defaults:
+    // - drone: slow bounce feels stable
+    // - pulse: upDown reads rhythmic
+    // - shimmer: random is sparkly
+    // - steps: up/down feels stepped
+    if (motion.arpPresetId === "drone") arp = "upDown";
+    else if (motion.arpPresetId === "pulse") arp = "upDown";
+    else if (motion.arpPresetId === "shimmer") arp = "random";
+    else if (motion.arpPresetId === "steps") arp = "up";
+    else arp = "upDown";
+  }
+
+  // rate: explicit > preset default > fallback
+  const rate =
+    motion.rate ||
+    arpPreset?.defaults?.rate ||
+    "8n";
+
+  const patternOn =
+    typeof motion.patternOn === "boolean" ? motion.patternOn : false;
+
+  return { timeSig, arp, rate, patternOn };
 }
 
 /**
@@ -94,18 +149,20 @@ function sceneToOrbitState(scene) {
       return;
     }
 
+    const resolved = resolveOrbitMotion(cfg.motion || {});
+
     orbitLayers[id] = {
       gain: Math.round((cfg.mix?.gain ?? 0.6) * 100),
       pan: cfg.mix?.pan ?? 0,
       muted: !!cfg.mix?.muted,
-      timeSig: cfg.motion?.timeSig || "4/4",
-      arp: cfg.motion?.arp || "off",
-      rate: cfg.motion?.rate || "8n",
+      timeSig: resolved.timeSig,
+      arp: resolved.arp,
+      rate: resolved.rate,
       enabled: typeof cfg.enabled === "boolean" ? cfg.enabled : true,
       voicePresetId: cfg.voicePresetId || null,
     };
 
-    orbitPatterns[id] = !!cfg.motion?.patternOn;
+    orbitPatterns[id] = !!resolved.patternOn;
   });
 
   return { orbitLayers, orbitPatterns };
@@ -161,14 +218,16 @@ function App() {
 
   // options for OrbitPanel dropdown
   const orbitSceneOptions = useMemo(() => {
-    return (ORBIT_MASTER_PRESETS || []).map((p) => ({
-      id: p.id,
-      label: p.label,
-      sig: p?.orbits?.orbitA?.motion?.timeSig
-        ? p.orbits.orbitA.motion.timeSig
-        : "",
-      subtitle: p.description || "",
-    }));
+    return (ORBIT_MASTER_PRESETS || []).map((p) => {
+      const aMotion = p?.orbits?.orbitA?.motion || {};
+      const resolved = resolveOrbitMotion(aMotion);
+      return {
+        id: p.id,
+        label: p.label,
+        sig: resolved.timeSig || "",
+        subtitle: p.description || "",
+      };
+    });
   }, []);
 
   // core state (initialized from active preset)
