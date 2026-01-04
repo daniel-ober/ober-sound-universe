@@ -50,7 +50,8 @@ export const MASTER_PRESETS = {
           atmos: { gain: 55, muted: false },
         },
 
-        orbitSceneId: "twilight_chime",
+        // ✅ Updated best-match Orbit Master Preset
+        orbitSceneId: "anchor_bloom",
       },
 
       presetB: {
@@ -71,7 +72,8 @@ export const MASTER_PRESETS = {
           atmos: { gain: 65, muted: false },
         },
 
-        orbitSceneId: "glass_pulse",
+        // ✅ Updated best-match Orbit Master Preset
+        orbitSceneId: "warm_tides",
       },
 
       presetC: {
@@ -92,7 +94,8 @@ export const MASTER_PRESETS = {
           atmos: { gain: 80, muted: false },
         },
 
-        orbitSceneId: "aurora_steps",
+        // ✅ Updated best-match Orbit Master Preset
+        orbitSceneId: "kinetic_prism",
       },
 
       presetD: {
@@ -113,7 +116,8 @@ export const MASTER_PRESETS = {
           atmos: { gain: 85, muted: false },
         },
 
-        orbitSceneId: "nebula_shimmer",
+        // ✅ Updated best-match Orbit Master Preset
+        orbitSceneId: "nebula_haze",
       },
 
       presetE: {
@@ -134,7 +138,8 @@ export const MASTER_PRESETS = {
           atmos: { gain: 70, muted: false },
         },
 
-        orbitSceneId: "midnight_drone",
+        // ✅ Updated best-match Orbit Master Preset
+        orbitSceneId: "midnight_embers",
       },
     },
   },
