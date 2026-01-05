@@ -5,7 +5,7 @@
  *
  * IMPORTANT:
  * - TopBar currently shows Galaxy0 presets only.
- * - We now support linking a MASTER preset -> a CoreLayer triplet:
+ * - We link a MASTER preset -> a CoreLayer triplet:
  *    preset.coreLayerPresetId -> CORE_LAYER_PRESETS[...]
  */
 
@@ -40,14 +40,13 @@ export const MASTER_PRESETS = {
             "A grounded cinematic foundation—solid core weight with restrained harmonic lift.",
         },
 
-        // ✅ Use core triplet -> Ground = Contrabass sampler (subAnchor)
+        // ✅ Core Dawn triplet = your WAV assets
         coreLayerPresetId: "coreDawn",
 
-        // Gains/mutes still controlled here (UI + engine)
         core: {
           ground: { gain: 90, muted: false },
           harmony: { gain: 65, muted: false },
-          atmos: { gain: 55, muted: false },
+          atmosphere: { gain: 55, muted: false },
         },
 
         orbitSceneId: "anchor_bloom",
@@ -64,18 +63,19 @@ export const MASTER_PRESETS = {
             "Slow orbiting warmth—gentle motion with a wide halo and softened edges.",
         },
 
-        // ✅ Use core triplet -> Ground = Deep sampler (duskDrone)
+        // ✅ Solar Drift triplet = your WAV assets
         coreLayerPresetId: "solarDrift",
 
         core: {
           ground: { gain: 60, muted: false },
           harmony: { gain: 80, muted: false },
-          atmos: { gain: 65, muted: false },
+          atmosphere: { gain: 65, muted: false },
         },
 
         orbitSceneId: "warm_tides",
       },
 
+      // leave the rest as placeholders (you can re-map later)
       presetC: {
         id: "presetC",
         label: "Aurora Pulse",
@@ -86,16 +86,12 @@ export const MASTER_PRESETS = {
           moodLine:
             "Brighter motion-forward balance—core stays present while atmos shimmers and pushes.",
         },
-
-        // Leaving mapped for consistency (still uses your ground library)
         coreLayerPresetId: "auroraPulse",
-
         core: {
           ground: { gain: 70, muted: false },
           harmony: { gain: 70, muted: false },
-          atmos: { gain: 80, muted: false },
+          atmosphere: { gain: 80, muted: false },
         },
-
         orbitSceneId: "kinetic_prism",
       },
 
@@ -109,15 +105,12 @@ export const MASTER_PRESETS = {
           moodLine:
             "A drifting nebula haze—harmonics bloom outward while the core stays understated.",
         },
-
         coreLayerPresetId: "nebulaEcho",
-
         core: {
           ground: { gain: 50, muted: false },
           harmony: { gain: 85, muted: false },
-          atmos: { gain: 85, muted: false },
+          atmosphere: { gain: 85, muted: false },
         },
-
         orbitSceneId: "nebula_haze",
       },
 
@@ -131,15 +124,12 @@ export const MASTER_PRESETS = {
           moodLine:
             "Deep and intimate—soft harmonies bloom in the dark with a calm, steady pull.",
         },
-
         coreLayerPresetId: "midnightBloom",
-
         core: {
           ground: { gain: 75, muted: false },
           harmony: { gain: 55, muted: false },
-          atmos: { gain: 70, muted: false },
+          atmosphere: { gain: 70, muted: false },
         },
-
         orbitSceneId: "midnight_embers",
       },
     },

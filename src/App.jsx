@@ -23,16 +23,15 @@ const MASTER_CYCLE_MEASURES = 1;
 // Base keyboard row (A-K) in a “home” octave.
 // We’ll transpose this by octaveShift using Z/X.
 const KEY_TO_NOTE_BASE = {
-  a: "C4",
-  s: "D4",
-  d: "E4",
-  f: "F4",
-  g: "G4",
-  h: "A4",
-  j: "B4",
-  k: "C5",
+  a: "C2",
+  s: "D2",
+  d: "E2",
+  f: "F2",
+  g: "G2",
+  h: "A2",
+  j: "B2",
+  k: "C3",
 };
-
 function getOrbitSceneById(id) {
   return ORBIT_MASTER_PRESETS.find((p) => p.id === id) || null;
 }
@@ -50,11 +49,20 @@ function resolveOrbitMotion(motion = {}) {
     motion.timeSig ||
     "4/4";
 
-  const arpPreset = motion.arpPresetId ? ARP_PRESETS?.[motion.arpPresetId] : null;
+  const arpPreset = motion.arpPresetId
+    ? ARP_PRESETS?.[motion.arpPresetId]
+    : null;
 
   let arp = (arpPreset?.mode || motion.arp || "off")?.toString?.() || "off";
 
-  const engineSafe = new Set(["off", "up", "down", "upDown", "downUp", "random"]);
+  const engineSafe = new Set([
+    "off",
+    "up",
+    "down",
+    "upDown",
+    "downUp",
+    "random",
+  ]);
   if (!engineSafe.has(arp)) {
     if (motion.arpPresetId === "drone") arp = "upDown";
     else if (motion.arpPresetId === "pulse") arp = "upDown";
@@ -64,7 +72,8 @@ function resolveOrbitMotion(motion = {}) {
   }
 
   const rate = motion.rate || arpPreset?.defaults?.rate || "8n";
-  const patternOn = typeof motion.patternOn === "boolean" ? motion.patternOn : false;
+  const patternOn =
+    typeof motion.patternOn === "boolean" ? motion.patternOn : false;
 
   return { timeSig, arp, rate, patternOn };
 }
@@ -465,11 +474,20 @@ function App() {
   const applyCoreTripletForPreset = async (presetConfig) => {
     const tripletId = presetConfig?.coreLayerPresetId || null;
     const resolved = tripletId ? getCorePresetTriplet(tripletId) : null;
-    if (!resolved?.ground || !resolved?.harmony || !resolved?.atmosphere) return;
+    if (!resolved) return;
 
-    await omseEngine.setCoreLayerPreset("ground", resolved.ground);
-    await omseEngine.setCoreLayerPreset("harmony", resolved.harmony);
-    await omseEngine.setCoreLayerPreset("atmosphere", resolved.atmosphere);
+    if (resolved.ground)
+      await omseEngine.setCoreLayerPreset("ground", resolved.ground);
+    else console.warn("[OMSE] Missing ground preset for triplet:", tripletId);
+
+    if (resolved.harmony)
+      await omseEngine.setCoreLayerPreset("harmony", resolved.harmony);
+    else console.warn("[OMSE] Missing harmony preset for triplet:", tripletId);
+
+    if (resolved.atmosphere)
+      await omseEngine.setCoreLayerPreset("atmosphere", resolved.atmosphere);
+    else
+      console.warn("[OMSE] Missing atmosphere preset for triplet:", tripletId);
   };
 
   const handleInitIfNeeded = async () => {
@@ -504,8 +522,8 @@ function App() {
         applyOrbitToEngine(orbitId, layer);
       });
 
-      Object.entries(nextOrbitState.orbitPatterns || {}).forEach(([oid, isOn]) =>
-        setOrbitPatternStateSafe(oid, !!isOn)
+      Object.entries(nextOrbitState.orbitPatterns || {}).forEach(
+        ([oid, isOn]) => setOrbitPatternStateSafe(oid, !!isOn)
       );
 
       Object.entries(nextOrbitState.orbitLayers).forEach(([orbitId, layer]) => {
@@ -514,7 +532,10 @@ function App() {
             ? ORBIT_VOICE_PRESETS[layer.voicePresetId]
             : null;
 
-        if (voicePreset && typeof omseEngine.setOrbitVoicePreset === "function") {
+        if (
+          voicePreset &&
+          typeof omseEngine.setOrbitVoicePreset === "function"
+        ) {
           omseEngine.setOrbitVoicePreset(orbitId, voicePreset);
         }
       });
@@ -541,7 +562,8 @@ function App() {
     const nextCore = normalizeCore(preset.core);
     setCoreLayers(nextCore);
 
-    const nextSceneId = preset.orbitSceneId || ORBIT_MASTER_PRESETS?.[0]?.id || "";
+    const nextSceneId =
+      preset.orbitSceneId || ORBIT_MASTER_PRESETS?.[0]?.id || "";
     setOrbitSceneId(nextSceneId);
 
     const scene = getOrbitSceneById(nextSceneId);
@@ -563,8 +585,8 @@ function App() {
         applyOrbitToEngine(orbitId, layer);
       });
 
-      Object.entries(nextOrbitState.orbitPatterns || {}).forEach(([oid, isOn]) =>
-        setOrbitPatternStateSafe(oid, !!isOn)
+      Object.entries(nextOrbitState.orbitPatterns || {}).forEach(
+        ([oid, isOn]) => setOrbitPatternStateSafe(oid, !!isOn)
       );
     }
   };
@@ -582,8 +604,8 @@ function App() {
         applyOrbitToEngine(orbitId, layer);
       });
 
-      Object.entries(nextOrbitState.orbitPatterns || {}).forEach(([oid, isOn]) =>
-        setOrbitPatternStateSafe(oid, !!isOn)
+      Object.entries(nextOrbitState.orbitPatterns || {}).forEach(
+        ([oid, isOn]) => setOrbitPatternStateSafe(oid, !!isOn)
       );
 
       Object.entries(nextOrbitState.orbitLayers).forEach(([orbitId, layer]) => {
@@ -592,7 +614,10 @@ function App() {
             ? ORBIT_VOICE_PRESETS[layer.voicePresetId]
             : null;
 
-        if (voicePreset && typeof omseEngine.setOrbitVoicePreset === "function") {
+        if (
+          voicePreset &&
+          typeof omseEngine.setOrbitVoicePreset === "function"
+        ) {
           omseEngine.setOrbitVoicePreset(orbitId, voicePreset);
         }
       });
@@ -723,8 +748,9 @@ function App() {
                   <div className="gravity-spectrum-header">
                     <span>Galaxy 0 · Output</span>
                     <span style={{ opacity: 0.75, fontSize: 12 }}>
-                      Octave: {octaveShift >= 0 ? `+${octaveShift}` : octaveShift}
-                      {" "} (Z / X)
+                      Octave:{" "}
+                      {octaveShift >= 0 ? `+${octaveShift}` : octaveShift} (Z /
+                      X)
                     </span>
                   </div>
 
@@ -759,7 +785,9 @@ function App() {
               />
             </div>
 
-            <section className="instrument-row-bottom">{/* future row */}</section>
+            <section className="instrument-row-bottom">
+              {/* future row */}
+            </section>
           </div>
         </div>
       </div>

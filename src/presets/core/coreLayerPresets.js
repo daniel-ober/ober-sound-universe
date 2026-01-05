@@ -16,23 +16,32 @@ import { ATMOSPHERE_PRESETS } from "./atmospherePresets";
  */
 
 export const CORE_LAYER_PRESETS = {
-  // ✅ Use your new sampler ground tones here
+  // ✅ Uses your NEW sampler wav sets:
+  // Core Dawn:
+  //  /public/assets/samples/Core Dawn/ground/Inst 1.wav ... Inst 1_8.wav
+  //  /public/assets/samples/Core Dawn/harmonious/Inst 1.wav ... Inst 1_8.wav
+  //  /public/assets/samples/Core Dawn/atmosphere/Inst 1.wav ... Inst 1_8.wav
   coreDawn: {
     id: "coreDawn",
     label: "Core Dawn",
-    groundId: "contrabassSampler", // ✅ WAS subAnchor
-    harmonyId: "velvetKeys",
-    atmosphereId: "auroraAir",
+    groundId: "coreDawn_ground_sampler",
+    harmonyId: "coreDawn_harmony_sampler",
+    atmosphereId: "coreDawn_atmosphere_sampler",
   },
 
+  // ✅ Solar Drift:
+  //  /public/assets/samples/Solar Drift/ground/Inst 1.wav ... Inst 1_8.wav
+  //  /public/assets/samples/Solar Drift/harmonious/Inst 1.wav ... Inst 1_8.wav
+  //  /public/assets/samples/Solar Drift/atmosphere/Inst 1.wav ... Inst 1_8.wav
   solarDrift: {
     id: "solarDrift",
     label: "Solar Drift",
-    groundId: "deepSampler", // ✅ WAS duskDrone
-    harmonyId: "warmChorusPad",
-    atmosphereId: "shorelineMist",
+    groundId: "solarDrift_ground_sampler",
+    harmonyId: "solarDrift_harmony_sampler",
+    atmosphereId: "solarDrift_atmosphere_sampler",
   },
 
+  // Keeping your existing synth-based bundles as-is:
   auroraPulse: {
     id: "auroraPulse",
     label: "Aurora Pulse",

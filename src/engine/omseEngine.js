@@ -36,6 +36,14 @@ function safeTimeSigString(sig) {
   return `${steps}/${denom}`;
 }
 
+function midiOf(note) {
+  try {
+    return Tone.Frequency(note).toMidi();
+  } catch {
+    return null;
+  }
+}
+
 class OMSEEngine {
   constructor() {
     this.initialized = false;
@@ -71,6 +79,10 @@ class OMSEEngine {
       orbitC: new Set(),
     };
 
+    // ✅ Ground monophonic tracking
+    this._groundHeld = new Set(); // all currently held notes
+    this._groundActive = null; // currently sounding note
+
     this.orbitConfig = {
       orbitA: { enabled: true, voicePresetId: null },
       orbitB: { enabled: true, voicePresetId: null },
@@ -95,7 +107,6 @@ class OMSEEngine {
       bpm: 90,
     };
 
-    // ✅ if App calls setCoreLayerPreset before graph exists, we queue it.
     this._pendingCorePresetByLayer = {
       ground: null,
       harmony: null,
@@ -117,58 +128,61 @@ class OMSEEngine {
 
     this.initialized = true;
 
-    // ✅ Apply any queued core swaps (prevents silent return)
     await this._applyPendingCorePresets();
   }
 
   // ---------------------------
   // ✅ CORE note helpers
   // ---------------------------
-_coreAttackLayer(layer, note, velocity = 0.9) {
-  if (!layer?.synth) return;
-  if (layer.muted) return;
-  if ((layer.gain?.gain?.value ?? 1) <= 0.0001) return;
 
-  try {
-    if (layer.synthType === "sampler") {
-      // Sampler MUST have a duration
-      layer.synth.triggerAttackRelease(
-        note,
-        "1n",           // ← long enough to hear, released cleanly
-        undefined,
-        velocity
-      );
-    } else {
-      layer.synth.triggerAttack(note, undefined, velocity);
+  _canSoundLayer(layer) {
+    if (!layer?.synth) return false;
+    if (layer.muted) return false;
+    if ((layer.gain?.gain?.value ?? 1) <= 0.0001) return false;
+    return true;
+  }
+
+  _coreAttackLayer(layer, note, velocity = 0.9) {
+    if (!this._canSoundLayer(layer)) return;
+
+    try {
+      if (layer.synthType === "sampler") {
+        // ✅ Infinite sustain while held:
+        // triggerAttack on down, triggerRelease on up
+        layer.synth.triggerAttack(note, undefined, velocity);
+      } else {
+        layer.synth.triggerAttack(note, undefined, velocity);
+      }
+    } catch {
+      // ignore
     }
-  } catch {
-    // ignore
   }
-}
 
-_coreReleaseLayer(layer, note) {
-  if (!layer?.synth) return;
+  _coreReleaseLayer(layer, note) {
+    if (!layer?.synth) return;
 
-  // Sampler releases itself via triggerAttackRelease
-  if (layer.synthType === "sampler") return;
-
-  const t = layer.synthType || "poly";
-
-  if (t === "mono") {
     try {
-      layer.synth.triggerRelease();
-    } catch {}
-    return;
-  }
+      if (layer.synthType === "sampler") {
+        layer.synth.triggerRelease(note);
+        return;
+      }
 
-  try {
-    layer.synth.triggerRelease(note);
-  } catch {
-    try {
-      layer.synth.releaseAll?.();
-    } catch {}
+      const t = layer.synthType || "poly";
+
+      if (t === "mono") {
+        layer.synth.triggerRelease();
+        return;
+      }
+
+      layer.synth.triggerRelease(note);
+    } catch {
+      try {
+        layer.synth.releaseAll?.();
+      } catch {
+        // ignore
+      }
+    }
   }
-}
 
   _coreReleaseAllHeldNotesOnLayer(layer) {
     if (!layer?.synth) return;
@@ -183,6 +197,49 @@ _coreReleaseLayer(layer, note) {
     }
   }
 
+  _pickLowestHeldNote() {
+    let best = null;
+    let bestMidi = Infinity;
+
+    for (const n of this._groundHeld) {
+      const m = midiOf(n);
+      if (m == null) continue;
+      if (m < bestMidi) {
+        bestMidi = m;
+        best = n;
+      }
+    }
+
+    return best;
+  }
+
+  _groundMonoUpdate(velocity = 0.9) {
+    const ground = this.core?.layers?.ground;
+    if (!ground || !ground.synth) return;
+
+    const nextLowest = this._pickLowestHeldNote();
+
+    // If nothing held, release active note (if any)
+    if (!nextLowest) {
+      if (this._groundActive) {
+        this._coreReleaseLayer(ground, this._groundActive);
+        this._groundActive = null;
+      }
+      return;
+    }
+
+    // If lowest unchanged, do nothing
+    if (this._groundActive === nextLowest) return;
+
+    // Switch: release old, attack new
+    if (this._groundActive) {
+      this._coreReleaseLayer(ground, this._groundActive);
+    }
+
+    this._groundActive = nextLowest;
+    this._coreAttackLayer(ground, nextLowest, velocity);
+  }
+
   async _applyPendingCorePresets() {
     const layers = ["ground", "harmony", "atmosphere"];
     for (const layerId of layers) {
@@ -193,9 +250,7 @@ _coreReleaseLayer(layer, note) {
     }
   }
 
-  // ✅ swap a core layer instrument safely at runtime (supports sampler)
   async setCoreLayerPreset(layerId, preset) {
-    // If graph not built yet, queue it and exit.
     if (!this.core?.layers || !this.core.layers[layerId]) {
       this._pendingCorePresetByLayer[layerId] = preset || null;
       return;
@@ -212,6 +267,12 @@ _coreReleaseLayer(layer, note) {
       this._coreReleaseAllHeldNotesOnLayer(existing);
     } catch {
       // ignore
+    }
+
+    // reset mono ground state when swapping ground
+    if (layerId === "ground") {
+      this._groundHeld.clear();
+      this._groundActive = null;
     }
 
     try {
@@ -239,8 +300,6 @@ _coreReleaseLayer(layer, note) {
 
     this.core.layers[layerId] = next;
 
-    // ✅ IMPORTANT:
-    // Wait for sampler buffers to load AND also wait for Tone.loaded()
     if (next.ready && typeof next.ready.then === "function") {
       try {
         await next.ready;
@@ -296,9 +355,17 @@ _coreReleaseLayer(layer, note) {
     if (!this.initialized) return;
 
     if (voiceId === "core") {
-      Object.values(this.core.layers).forEach((layer) => {
-        this._coreAttackLayer(layer, note, velocity);
-      });
+      // Harmony + Atmosphere: normal poly behavior (sustain while held)
+      const harmony = this.core.layers.harmony;
+      const atmos = this.core.layers.atmosphere;
+
+      this._coreAttackLayer(harmony, note, velocity);
+      this._coreAttackLayer(atmos, note, velocity);
+
+      // Ground: mono lowest-note only (sustain while held)
+      this._groundHeld.add(note);
+      this._groundMonoUpdate(velocity);
+
       this.activeNotes.core.add(note);
       return;
     }
@@ -323,9 +390,16 @@ _coreReleaseLayer(layer, note) {
     if (voiceId === "core") {
       if (!this.activeNotes.core.has(note)) return;
 
-      Object.values(this.core.layers).forEach((layer) => {
-        this._coreReleaseLayer(layer, note);
-      });
+      // release harmony/atmos normally
+      const harmony = this.core.layers.harmony;
+      const atmos = this.core.layers.atmosphere;
+
+      this._coreReleaseLayer(harmony, note);
+      this._coreReleaseLayer(atmos, note);
+
+      // ground mono: remove note, switch to next-lowest (or stop)
+      this._groundHeld.delete(note);
+      this._groundMonoUpdate(0.9);
 
       this.activeNotes.core.delete(note);
       return;
@@ -352,6 +426,14 @@ _coreReleaseLayer(layer, note) {
     if (!layer) return;
     layer.muted = !!muted;
     layer.gain.gain.value = layer.muted ? 0 : layer.baseGain;
+
+    // if ground is muted, stop any currently sustaining mono note
+    if (layerId === "ground" && layer.muted) {
+      if (this._groundActive) {
+        this._coreReleaseLayer(layer, this._groundActive);
+        this._groundActive = null;
+      }
+    }
   }
 
   setOrbitGain(orbitId, normalized) {
@@ -517,9 +599,7 @@ _coreReleaseLayer(layer, note) {
     try {
       const s = Tone.Time("1m").toSeconds();
       if (Number.isFinite(s) && s > 0) return s;
-    } catch {
-      // ignore
-    }
+    } catch {}
 
     const bpm = Tone.Transport?.bpm?.value || this.master.bpm || 90;
     const beat = 60 / Math.max(1, bpm);
@@ -769,5 +849,4 @@ _coreReleaseLayer(layer, note) {
 }
 
 export const omseEngine = new OMSEEngine();
-
 window.omseEngine = omseEngine;
