@@ -1,19 +1,16 @@
-// src/presets/masterPresets.js
+// src/presets/master/masterPresets.js
 
 /**
  * MASTER_PRESETS + GALAXIES
  *
  * IMPORTANT:
- * - MASTER_PRESET_MENU must be an array of GLOBAL IDs (strings),
- *   because TopBar expects IDs like: "galaxy0:presetA"
- * - Only Galaxy0 presets should show in the dropdown for now.
+ * - TopBar currently shows Galaxy0 presets only.
+ * - We now support linking a MASTER preset -> a CoreLayer triplet:
+ *    preset.coreLayerPresetId -> CORE_LAYER_PRESETS[...]
  */
 
 const BANNER_BASE_PATH = "/assets/skins/banners";
 
-/**
- * Galaxy display names (rename these to whatever you want).
- */
 export const GALAXY_DISPLAY = {
   galaxy0: "GALAXY0 (DEV)",
   galaxy1: "GALAXY1 — NOVA ATLAS",
@@ -36,7 +33,6 @@ export const MASTER_PRESETS = {
         id: "presetA",
         label: "Core Dawn",
         banner: `${BANNER_BASE_PATH}/core-dawn.png`,
-
         meta: {
           galaxyLine: "Galaxy 0 — Dev",
           tagsLine: "Dark · Cinematic · Controlled",
@@ -44,13 +40,16 @@ export const MASTER_PRESETS = {
             "A grounded cinematic foundation—solid core weight with restrained harmonic lift.",
         },
 
+        // ✅ Use core triplet -> Ground = Contrabass sampler (subAnchor)
+        coreLayerPresetId: "coreDawn",
+
+        // Gains/mutes still controlled here (UI + engine)
         core: {
           ground: { gain: 90, muted: false },
           harmony: { gain: 65, muted: false },
           atmos: { gain: 55, muted: false },
         },
 
-        // ✅ Updated best-match Orbit Master Preset
         orbitSceneId: "anchor_bloom",
       },
 
@@ -58,7 +57,6 @@ export const MASTER_PRESETS = {
         id: "presetB",
         label: "Solar Drift",
         banner: `${BANNER_BASE_PATH}/solar-drift.png`,
-
         meta: {
           galaxyLine: "Galaxy 0 — Dev",
           tagsLine: "Warm · Floating · Expansive",
@@ -66,13 +64,15 @@ export const MASTER_PRESETS = {
             "Slow orbiting warmth—gentle motion with a wide halo and softened edges.",
         },
 
+        // ✅ Use core triplet -> Ground = Deep sampler (duskDrone)
+        coreLayerPresetId: "solarDrift",
+
         core: {
           ground: { gain: 60, muted: false },
           harmony: { gain: 80, muted: false },
           atmos: { gain: 65, muted: false },
         },
 
-        // ✅ Updated best-match Orbit Master Preset
         orbitSceneId: "warm_tides",
       },
 
@@ -80,7 +80,6 @@ export const MASTER_PRESETS = {
         id: "presetC",
         label: "Aurora Pulse",
         banner: `${BANNER_BASE_PATH}/aurora-pulse.png`,
-
         meta: {
           galaxyLine: "Galaxy 0 — Dev",
           tagsLine: "Luminous · Rhythmic · Energetic",
@@ -88,13 +87,15 @@ export const MASTER_PRESETS = {
             "Brighter motion-forward balance—core stays present while atmos shimmers and pushes.",
         },
 
+        // Leaving mapped for consistency (still uses your ground library)
+        coreLayerPresetId: "auroraPulse",
+
         core: {
           ground: { gain: 70, muted: false },
           harmony: { gain: 70, muted: false },
           atmos: { gain: 80, muted: false },
         },
 
-        // ✅ Updated best-match Orbit Master Preset
         orbitSceneId: "kinetic_prism",
       },
 
@@ -102,7 +103,6 @@ export const MASTER_PRESETS = {
         id: "presetD",
         label: "Nebula Echo",
         banner: `${BANNER_BASE_PATH}/nebula-echo.png`,
-
         meta: {
           galaxyLine: "Galaxy 0 — Dev",
           tagsLine: "Ethereal · Wide · Dreamlike",
@@ -110,13 +110,14 @@ export const MASTER_PRESETS = {
             "A drifting nebula haze—harmonics bloom outward while the core stays understated.",
         },
 
+        coreLayerPresetId: "nebulaEcho",
+
         core: {
           ground: { gain: 50, muted: false },
           harmony: { gain: 85, muted: false },
           atmos: { gain: 85, muted: false },
         },
 
-        // ✅ Updated best-match Orbit Master Preset
         orbitSceneId: "nebula_haze",
       },
 
@@ -124,7 +125,6 @@ export const MASTER_PRESETS = {
         id: "presetE",
         label: "Midnight Bloom",
         banner: `${BANNER_BASE_PATH}/midnight-bloom.png`,
-
         meta: {
           galaxyLine: "Galaxy 0 — Dev",
           tagsLine: "Moody · Velvet · Late-Night",
@@ -132,19 +132,19 @@ export const MASTER_PRESETS = {
             "Deep and intimate—soft harmonies bloom in the dark with a calm, steady pull.",
         },
 
+        coreLayerPresetId: "midnightBloom",
+
         core: {
           ground: { gain: 75, muted: false },
           harmony: { gain: 55, muted: false },
           atmos: { gain: 70, muted: false },
         },
 
-        // ✅ Updated best-match Orbit Master Preset
         orbitSceneId: "midnight_embers",
       },
     },
   },
 
-  // Placeholder galaxies
   galaxy1: {
     id: "galaxy1",
     name: "Galaxy1",
@@ -195,10 +195,6 @@ export const GALAXY0_MASTER_PRESET_ORDER = [
   "presetE",
 ];
 
-/**
- * ✅ Only show Galaxy0 presets for now
- * MUST be array of strings: ["galaxy0:presetA", ...]
- */
 export const MASTER_PRESET_MENU = GALAXY0_MASTER_PRESET_ORDER.map(
   (presetId) => `galaxy0:${presetId}`
 );
@@ -211,13 +207,6 @@ export function getGalaxy(galaxyId) {
   return MASTER_PRESETS?.[galaxyId] || null;
 }
 
-/**
- * Accepts:
- *  - "galaxy0:presetA"
- *  - "galaxy0/presetA"
- *
- * Returns: { globalId, galaxyId, presetId, galaxy, preset } or null
- */
 export function getMasterPresetByGlobalId(globalId) {
   if (typeof globalId !== "string" || !globalId.trim()) return null;
 

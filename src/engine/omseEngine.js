@@ -3,14 +3,11 @@ import * as Tone from "tone";
 import { buildOrbitVoice } from "./orbitVoiceFactory";
 import { buildCoreLayerFromPreset } from "./coreVoiceFactory";
 
-/**
- * Helper to build a smoothed, 0–1 meter
- */
 function makeMeter() {
   return new Tone.Meter({
     channels: 1,
     smoothing: 0.8,
-    normalRange: true, // 0–1 instead of dB
+    normalRange: true,
   });
 }
 
@@ -26,9 +23,6 @@ function clamp(v, min, max) {
   return Math.max(min, Math.min(max, n));
 }
 
-/**
- * Parse "6/4" => { steps: 6, denom: 4 }
- */
 function parseTimeSig(sig) {
   if (typeof sig !== "string") return { steps: 4, denom: 4 };
   const [a, b] = sig.split("/");
@@ -42,35 +36,20 @@ function safeTimeSigString(sig) {
   return `${steps}/${denom}`;
 }
 
-/**
- * Ober MotionSynth Engine (OMSE)
- *
- * ✅ TRUE POLYRHYTHM MODEL
- * - Master defines "cycle" length in measures + master time signature (defines what 1 measure means)
- * - Each Orbit "timeSig" uses its NUMERATOR as pulses per master cycle
- *
- * ✅ CORE LAYERS (hi-res)
- * - ground / harmony / atmosphere are built via coreVoiceFactory
- * - core FX: reverb + delay sends (stable, never rebuilt on UI change)
- */
 class OMSEEngine {
   constructor() {
     this.initialized = false;
 
-    // Master buss
     this.masterGain = null;
     this.masterMeter = null;
-
-    // Spectrum analyser (for MasterSpectrum.jsx)
     this.masterAnalyser = null;
 
-    // Global FX sends (core “hi-res space”)
     this.coreReverb = null;
     this.coreDelay = null;
 
-    // Core buss + layers
     this.coreBuss = null;
     this.coreMeter = null;
+
     this.core = {
       layers: {
         ground: null,
@@ -79,14 +58,12 @@ class OMSEEngine {
       },
     };
 
-    // Orbits
     this.orbits = {
       orbitA: null,
       orbitB: null,
       orbitC: null,
     };
 
-    // Per-voice active note maps
     this.activeNotes = {
       core: new Set(),
       orbitA: new Set(),
@@ -94,39 +71,37 @@ class OMSEEngine {
       orbitC: new Set(),
     };
 
-    // Orbit config + motion state
     this.orbitConfig = {
       orbitA: { enabled: true, voicePresetId: null },
       orbitB: { enabled: true, voicePresetId: null },
       orbitC: { enabled: true, voicePresetId: null },
     };
 
-    // ✅ ARP “pattern” is assumed always running.
-    // arp:"off" means “no arp output”, but the loop is still active.
     this.orbitMotion = {
       orbitA: { timeSig: "4/4", arp: "off", rate: "8n", step: 0 },
       orbitB: { timeSig: "4/4", arp: "off", rate: "8n", step: 0 },
       orbitC: { timeSig: "4/4", arp: "off", rate: "8n", step: 0 },
     };
 
-    // Per-orbit pattern loops (Tone.Loop)
     this.orbitPatterns = {
       orbitA: null,
       orbitB: null,
       orbitC: null,
     };
 
-    // -----------------------------
-    // MASTER CLOCK CONFIG
-    // -----------------------------
     this.master = {
-      timeSig: "4/4", // affects what "1m" means
-      cycleMeasures: 1, // user-defined cycle length in measures (1..64)
+      timeSig: "4/4",
+      cycleMeasures: 1,
       bpm: 90,
     };
-  }
 
-  // ---------- PUBLIC API ----------
+    // ✅ if App calls setCoreLayerPreset before graph exists, we queue it.
+    this._pendingCorePresetByLayer = {
+      ground: null,
+      harmony: null,
+      atmosphere: null,
+    };
+  }
 
   async startAudioContext() {
     if (this.initialized) return;
@@ -134,23 +109,152 @@ class OMSEEngine {
     await Tone.start();
     this._buildGraph();
 
-    // Apply master to transport BEFORE starting
     this._applyMasterToTransport();
-
     Tone.Transport.start();
 
-    // Ensure per-orbit intervals match master cycle
     this._refreshAllOrbitIntervals();
-
-    // ✅ Start orbit loops immediately (they only produce sound when allowed)
     this._ensureOrbitLoopsRunning();
 
     this.initialized = true;
+
+    // ✅ Apply any queued core swaps (prevents silent return)
+    await this._applyPendingCorePresets();
   }
 
-  // -----------------------------
-  // MASTER CONTROLS
-  // -----------------------------
+  // ---------------------------
+  // ✅ CORE note helpers
+  // ---------------------------
+_coreAttackLayer(layer, note, velocity = 0.9) {
+  if (!layer?.synth) return;
+  if (layer.muted) return;
+  if ((layer.gain?.gain?.value ?? 1) <= 0.0001) return;
+
+  try {
+    if (layer.synthType === "sampler") {
+      // Sampler MUST have a duration
+      layer.synth.triggerAttackRelease(
+        note,
+        "1n",           // ← long enough to hear, released cleanly
+        undefined,
+        velocity
+      );
+    } else {
+      layer.synth.triggerAttack(note, undefined, velocity);
+    }
+  } catch {
+    // ignore
+  }
+}
+
+_coreReleaseLayer(layer, note) {
+  if (!layer?.synth) return;
+
+  // Sampler releases itself via triggerAttackRelease
+  if (layer.synthType === "sampler") return;
+
+  const t = layer.synthType || "poly";
+
+  if (t === "mono") {
+    try {
+      layer.synth.triggerRelease();
+    } catch {}
+    return;
+  }
+
+  try {
+    layer.synth.triggerRelease(note);
+  } catch {
+    try {
+      layer.synth.releaseAll?.();
+    } catch {}
+  }
+}
+
+  _coreReleaseAllHeldNotesOnLayer(layer) {
+    if (!layer?.synth) return;
+
+    const held = Array.from(this.activeNotes.core || []);
+    held.forEach((note) => this._coreReleaseLayer(layer, note));
+
+    try {
+      layer.synth.releaseAll?.();
+    } catch {
+      // ignore
+    }
+  }
+
+  async _applyPendingCorePresets() {
+    const layers = ["ground", "harmony", "atmosphere"];
+    for (const layerId of layers) {
+      const p = this._pendingCorePresetByLayer?.[layerId];
+      if (!p) continue;
+      this._pendingCorePresetByLayer[layerId] = null;
+      await this.setCoreLayerPreset(layerId, p);
+    }
+  }
+
+  // ✅ swap a core layer instrument safely at runtime (supports sampler)
+  async setCoreLayerPreset(layerId, preset) {
+    // If graph not built yet, queue it and exit.
+    if (!this.core?.layers || !this.core.layers[layerId]) {
+      this._pendingCorePresetByLayer[layerId] = preset || null;
+      return;
+    }
+
+    const existing = this.core.layers[layerId];
+
+    const preserved = {
+      baseGain: existing.baseGain ?? 0.8,
+      muted: !!existing.muted,
+    };
+
+    try {
+      this._coreReleaseAllHeldNotesOnLayer(existing);
+    } catch {
+      // ignore
+    }
+
+    try {
+      existing?._disposeBuilt?.();
+    } catch {
+      // ignore
+    }
+    try {
+      existing?.gain?.disconnect?.();
+      existing?.gain?.dispose?.();
+    } catch {
+      // ignore
+    }
+    try {
+      existing?.meter?.dispose?.();
+    } catch {
+      // ignore
+    }
+
+    const next = this._buildCoreLayerFromPreset(preset, preserved.baseGain);
+
+    next.muted = preserved.muted;
+    next.baseGain = preserved.baseGain;
+    next.gain.gain.value = next.muted ? 0 : next.baseGain;
+
+    this.core.layers[layerId] = next;
+
+    // ✅ IMPORTANT:
+    // Wait for sampler buffers to load AND also wait for Tone.loaded()
+    if (next.ready && typeof next.ready.then === "function") {
+      try {
+        await next.ready;
+      } catch (e) {
+        console.warn(`[OMSE] sampler load failed for core layer "${layerId}"`, e);
+      }
+    }
+
+    try {
+      await Tone.loaded();
+    } catch {
+      // ignore
+    }
+  }
 
   setMasterBpm(bpm) {
     const v = clamp(parseFloat(bpm) || 90, 20, 300);
@@ -188,24 +292,12 @@ class OMSEEngine {
     this.setMasterTimeSig("4/4");
   }
 
-  getMasterSettings() {
-    return {
-      bpm: this.master.bpm,
-      timeSig: this.master.timeSig,
-      cycleMeasures: this.master.cycleMeasures,
-    };
-  }
-
-  /**
-   * Core / Orbit note control
-   */
   noteOn(voiceId, note, velocity = 0.9) {
     if (!this.initialized) return;
 
     if (voiceId === "core") {
       Object.values(this.core.layers).forEach((layer) => {
-        if (!layer) return;
-        layer.synth.triggerAttack(note, undefined, velocity);
+        this._coreAttackLayer(layer, note, velocity);
       });
       this.activeNotes.core.add(note);
       return;
@@ -214,8 +306,6 @@ class OMSEEngine {
     const orbit = this.orbits[voiceId];
     if (!orbit) return;
 
-    // ✅ CRITICAL FIX:
-    // If orbit is disabled OR muted OR effectively at 0 gain, do not sound on keydown.
     const enabled = !!this.orbitConfig?.[voiceId]?.enabled;
     if (!enabled) return;
     if (orbit.muted) return;
@@ -232,10 +322,11 @@ class OMSEEngine {
 
     if (voiceId === "core") {
       if (!this.activeNotes.core.has(note)) return;
+
       Object.values(this.core.layers).forEach((layer) => {
-        if (!layer) return;
-        layer.synth.triggerRelease(note);
+        this._coreReleaseLayer(layer, note);
       });
+
       this.activeNotes.core.delete(note);
       return;
     }
@@ -247,26 +338,6 @@ class OMSEEngine {
     orbit.synth.triggerRelease(note);
     this.activeNotes[voiceId].delete(note);
   }
-
-  async playTestScene() {
-    if (!this.initialized) return;
-
-    const now = Tone.now();
-    const chord = ["C4", "E4", "G4", "B4", "C5"];
-
-    chord.forEach((note, i) => {
-      const t = now + i * 0.35;
-      Object.values(this.core.layers).forEach((layer) => {
-        if (!layer) return;
-        layer.synth.triggerAttackRelease(note, "2n", t);
-      });
-    });
-
-    // ✅ loops are always running; arp output depends on held core notes + arp setting
-    this._ensureOrbitLoopsRunning();
-  }
-
-  // ----- Core layer controls -----
 
   setCoreLayerGain(layerId, normalized) {
     const layer = this.core.layers[layerId];
@@ -282,49 +353,6 @@ class OMSEEngine {
     layer.muted = !!muted;
     layer.gain.gain.value = layer.muted ? 0 : layer.baseGain;
   }
-
-  /**
-   * Apply a Core Layer preset (ground/harmony/atmosphere).
-   * - Disposes old layer synth graph cleanly
-   * - Rebuilds ONLY that layer (core FX + buss remain stable)
-   *
-   * preset is expected to be an object understood by buildCoreLayerFromPreset()
-   */
-  setCoreLayerPreset(layerId, preset) {
-    if (!this.initialized) return;
-    if (!["ground", "harmony", "atmosphere"].includes(layerId)) return;
-
-    const prev = this.core.layers[layerId];
-    const prevGain = prev?.baseGain ?? 0.75;
-    const prevMuted = !!prev?.muted;
-
-    // Release any held notes for that layer
-    try {
-      this.activeNotes.core?.forEach((n) => {
-        prev?.synth?.triggerRelease?.(n);
-      });
-    } catch {
-      // ignore
-    }
-
-    // Dispose previous graph (layer-only)
-    this._disposeCoreLayer(prev);
-
-    // Build new layer graph from preset
-    const next = this._buildCoreLayerFromPreset(layerId, preset, {
-      baseGain: prevGain,
-      muted: prevMuted,
-    });
-
-    this.core.layers[layerId] = next;
-
-    // Respect mute/gain
-    next.baseGain = clamp01(prevGain);
-    next.muted = prevMuted;
-    next.gain.gain.value = next.muted ? 0 : next.baseGain;
-  }
-
-  // ----- Orbit controls (continuous-safe) -----
 
   setOrbitGain(orbitId, normalized) {
     const orbit = this.orbits[orbitId];
@@ -356,7 +384,6 @@ class OMSEEngine {
     if (!orbit?.panner?.pan) return;
 
     const v = clamp(pan, -1, 1);
-
     if (orbit.panner.pan.rampTo) orbit.panner.pan.rampTo(v, 0.03);
     else orbit.panner.pan.value = v;
   }
@@ -370,23 +397,14 @@ class OMSEEngine {
     const orbit = this.orbits[orbitId];
     if (!orbit) return;
 
-    // ✅ Always-running loops:
-    // enabled=false: silence gain to 0 (and loop output gates anyway)
-    // enabled=true: restore gain (or keep at 0 if muted)
     const target = !enabled ? 0 : orbit.muted ? 0 : orbit.baseGain;
 
     if (orbit.gain?.gain?.rampTo) orbit.gain.gain.rampTo(target, 0.03);
     else orbit.gain.gain.value = target;
 
-    // ✅ Ensure loops are running when enabled (no pattern toggle in UI)
     this._ensureOrbitLoopsRunning();
   }
 
-  /**
-   * ✅ Orbit timeSig (true polyrhythm model):
-   * - numerator = pulses per MASTER CYCLE
-   * - denominator is treated as UI label (not timing)
-   */
   setOrbitTimeSig(orbitId, timeSig) {
     const nextSig = safeTimeSigString(timeSig || "4/4");
     const prev = this.orbitMotion?.[orbitId] || {};
@@ -413,9 +431,6 @@ class OMSEEngine {
     };
   }
 
-  /**
-   * rate controls note length / articulation only
-   */
   setOrbitRate(orbitId, rate) {
     const prev = this.orbitMotion?.[orbitId] || {};
     this.orbitMotion[orbitId] = {
@@ -424,24 +439,17 @@ class OMSEEngine {
     };
   }
 
-  /**
-   * ✅ Swap orbit synth based on ORBIT_VOICE_PRESETS
-   * Preserves orbit panner/gain/meter chain.
-   */
   setOrbitVoicePreset(orbitId, voicePreset) {
     const orbit = this.orbits[orbitId];
     if (!orbit) return;
 
     try {
-      this.activeNotes[orbitId]?.forEach((n) => {
-        orbit.synth.triggerRelease(n);
-      });
+      this.activeNotes[orbitId]?.forEach((n) => orbit.synth.triggerRelease(n));
       this.activeNotes[orbitId]?.clear?.();
 
       orbit.synth?.disconnect?.();
       orbit.synth?.dispose?.();
 
-      // ✅ FIX: build from orbitVoiceFactory (stable + centralized).
       const synth = buildOrbitVoice(voicePreset);
 
       const filterCfg = voicePreset?.params?.filter;
@@ -465,12 +473,9 @@ class OMSEEngine {
 
       orbit.synth = synth;
     } catch (e) {
-      // eslint-disable-next-line no-console
       console.warn("setOrbitVoicePreset failed:", e);
     }
   }
-
-  // ----- Meter getters (0–1) -----
 
   getMasterLevel() {
     if (!this.masterMeter) return 0;
@@ -489,84 +494,17 @@ class OMSEEngine {
     return clamp01(orbit.meter.getValue());
   }
 
-  /**
-   * Master spectrum for MasterSpectrum.jsx
-   * Returns 0..1 floats
-   */
   getMasterSpectrum = () => {
     if (!this.masterAnalyser) return null;
 
     const values = this.masterAnalyser.getValue();
     if (!values || !values.length) return null;
 
-    // fft returns negative dB values. Map roughly -100..-20 => 0..1
     return Array.from(values, (v) => {
       const db = typeof v === "number" ? v : -100;
       return clamp01((db + 100) / 80);
     });
   };
-
-  /**
-   * ✅ Apply a full Orbit Master Preset
-   *
-   * IMPORTANT:
-   * - "Pattern" is assumed ALWAYS ON while an orbit is enabled.
-   * - We do not use cfg.motion.patternOn anymore.
-   */
-  applyOrbitScenePreset(scene, voicePresetMap) {
-    if (!this.initialized || !scene?.orbits) return;
-
-    ["orbitA", "orbitB", "orbitC"].forEach((orbitId) => {
-      const cfg = scene.orbits?.[orbitId];
-      if (!cfg) return;
-
-      // enabled controls sound gate + UI "ON/OFF"
-      this.setOrbitEnabled(orbitId, !!cfg.enabled);
-
-      const voiceId = cfg.voicePresetId || null;
-      this.orbitConfig[orbitId] = {
-        ...(this.orbitConfig[orbitId] || {}),
-        voicePresetId: voiceId,
-      };
-
-      const voicePreset = voiceId ? voicePresetMap?.[voiceId] : null;
-      if (voicePreset) this.setOrbitVoicePreset(orbitId, voicePreset);
-
-      const mix = cfg.mix || {};
-      this.setOrbitGain(orbitId, clamp01(mix.gain ?? 0.6));
-      this.setOrbitPan(orbitId, clamp(mix.pan ?? 0, -1, 1));
-      this.setOrbitMute(orbitId, !!mix.muted);
-
-      const motion = cfg.motion || {};
-      this.setOrbitTimeSig(orbitId, motion.timeSig || "4/4");
-      this.setOrbitArp(orbitId, motion.arp || "off");
-      this.setOrbitRate(orbitId, motion.rate || "8n");
-    });
-
-    // Ensure intervals match master cycle after applying scene
-    this._refreshAllOrbitIntervals();
-
-    // ✅ Always keep loops running; output is gated by enabled/muted/arp/core-held-notes
-    this._ensureOrbitLoopsRunning();
-  }
-
-  /**
-   * ✅ Apply core layers from a Core Layer preset bundle:
-   * {
-   *   ground: <presetObj>,
-   *   harmony: <presetObj>,
-   *   atmosphere: <presetObj>
-   * }
-   */
-  applyCoreLayerPresetBundle(bundle) {
-    if (!this.initialized || !bundle) return;
-
-    if (bundle.ground) this.setCoreLayerPreset("ground", bundle.ground);
-    if (bundle.harmony) this.setCoreLayerPreset("harmony", bundle.harmony);
-    if (bundle.atmosphere) this.setCoreLayerPreset("atmosphere", bundle.atmosphere);
-  }
-
-  // ---------- INTERNAL ----------
 
   _applyMasterToTransport() {
     Tone.Transport.bpm.value = this.master.bpm;
@@ -575,10 +513,6 @@ class OMSEEngine {
     Tone.Transport.timeSignature = [steps, denom];
   }
 
-  /**
-   * Compute seconds for ONE measure based on current Transport settings.
-   * Tone.Time("1m") uses Transport timeSignature internally.
-   */
   _getMeasureSeconds() {
     try {
       const s = Tone.Time("1m").toSeconds();
@@ -587,7 +521,6 @@ class OMSEEngine {
       // ignore
     }
 
-    // fallback
     const bpm = Tone.Transport?.bpm?.value || this.master.bpm || 90;
     const beat = 60 / Math.max(1, bpm);
     return beat * 4;
@@ -599,13 +532,11 @@ class OMSEEngine {
   }
 
   _refreshAllOrbitIntervals() {
-    ["orbitA", "orbitB", "orbitC"].forEach((id) => this._refreshOrbitInterval(id));
+    ["orbitA", "orbitB", "orbitC"].forEach((id) =>
+      this._refreshOrbitInterval(id)
+    );
   }
 
-  /**
-   * ✅ True polyrhythm:
-   * Orbit interval = masterCycleSeconds / orbitNumerator(steps)
-   */
   _refreshOrbitInterval(orbitId) {
     const loop = this.orbitPatterns?.[orbitId];
     if (!loop) return;
@@ -630,55 +561,36 @@ class OMSEEngine {
   }
 
   _buildGraph() {
-    // MASTER BUS
     this.masterGain = new Tone.Gain(0.9).toDestination();
 
-    // Level meter
     this.masterMeter = makeMeter();
     this.masterGain.connect(this.masterMeter);
 
-    // Spectrum analyser (FFT)
     this.masterAnalyser = new Tone.Analyser("fft", 1024);
     this.masterGain.connect(this.masterAnalyser);
 
-    // CORE FX (hi-res space)
     this.coreReverb = new Tone.Reverb({
-      decay: 6.5,
-      wet: 0.28,
-    });
+      decay: 7.0,
+      preDelay: 0.02,
+      wet: 0.22,
+    }).connect(this.masterGain);
 
     this.coreDelay = new Tone.FeedbackDelay({
       delayTime: "8n",
-      feedback: 0.25,
-      wet: 0.18,
-    });
+      feedback: 0.18,
+      wet: 0.14,
+    }).connect(this.masterGain);
 
-    // CORE BUSS
     this.coreBuss = new Tone.Gain(1).connect(this.masterGain);
+
     this.coreMeter = makeMeter();
     this.coreBuss.connect(this.coreMeter);
 
-    // Route FX returns to master
-    this.coreReverb.connect(this.masterGain);
-    this.coreDelay.connect(this.masterGain);
+    // Defaults until swapped by App
+    this.core.layers.ground = this._buildCoreLayerFromPreset(null, 0.9);
+    this.core.layers.harmony = this._buildCoreLayerFromPreset(null, 0.8);
+    this.core.layers.atmosphere = this._buildCoreLayerFromPreset(null, 0.7);
 
-    // CORE LAYERS (built via presets factory defaults)
-    this.core.layers.ground = this._buildCoreLayerFromPreset("ground", null, {
-      baseGain: 0.9,
-      muted: false,
-    });
-
-    this.core.layers.harmony = this._buildCoreLayerFromPreset("harmony", null, {
-      baseGain: 0.8,
-      muted: false,
-    });
-
-    this.core.layers.atmosphere = this._buildCoreLayerFromPreset("atmosphere", null, {
-      baseGain: 0.7,
-      muted: false,
-    });
-
-    // ORBITS (fallback voices; scene presets can swap these)
     this.orbits.orbitA = this._buildOrbitVoice({
       type: "square",
       pan: -0.25,
@@ -695,13 +607,62 @@ class OMSEEngine {
       baseGain: 0.65,
     });
 
-    // Orbit pattern loops
     this.orbitPatterns.orbitA = this._makeOrbitArpLoop("orbitA");
     this.orbitPatterns.orbitB = this._makeOrbitArpLoop("orbitB");
     this.orbitPatterns.orbitC = this._makeOrbitArpLoop("orbitC");
 
-    // Set initial intervals (master-cycle based)
     this._refreshAllOrbitIntervals();
+  }
+
+  _buildCoreLayerFromPreset(preset, baseGain) {
+    const safePreset =
+      preset ||
+      ({
+        id: "defaultCore",
+        engine: "poly",
+        params: {
+          polyType: "synth",
+          synth: {
+            oscillator: { type: "sine" },
+            envelope: {
+              attack: 0.02,
+              decay: 0.35,
+              sustain: 0.6,
+              release: 1.6,
+            },
+          },
+          filter: { type: "lowpass", frequency: 6000, Q: 0.7 },
+          drive: { amount: 0.0 },
+          chorus: null,
+          width: { amount: 0.0 },
+          reverbSend: 0.08,
+          delaySend: 0.0,
+        },
+      });
+
+    const built = buildCoreLayerFromPreset(safePreset);
+
+    const gain = new Tone.Gain(baseGain).connect(this.coreBuss);
+    const meter = makeMeter();
+    gain.connect(meter);
+
+    built.output.connect(gain);
+
+    if (built.reverbSendGain && this.coreReverb)
+      built.reverbSendGain.connect(this.coreReverb);
+    if (built.delaySendGain && this.coreDelay)
+      built.delaySendGain.connect(this.coreDelay);
+
+    return {
+      synth: built.synth,
+      synthType: built.synthType || "poly",
+      gain,
+      meter,
+      muted: false,
+      baseGain,
+      ready: built.ready,
+      _disposeBuilt: built.dispose,
+    };
   }
 
   _buildOrbitVoice({ type, pan, baseGain }) {
@@ -730,125 +691,6 @@ class OMSEEngine {
     };
   }
 
-  _disposeCoreLayer(layer) {
-    if (!layer) return;
-
-    try {
-      layer.synth?.disconnect?.();
-      layer.synth?.dispose?.();
-    } catch {
-      // ignore
-    }
-
-    try {
-      layer.preGain?.disconnect?.();
-      layer.preGain?.dispose?.();
-    } catch {
-      // ignore
-    }
-
-    try {
-      layer.gain?.disconnect?.();
-      layer.gain?.dispose?.();
-    } catch {
-      // ignore
-    }
-
-    try {
-      layer.meter?.disconnect?.();
-      layer.meter?.dispose?.();
-    } catch {
-      // ignore
-    }
-
-    try {
-      layer.sendReverb?.disconnect?.();
-      layer.sendReverb?.dispose?.();
-    } catch {
-      // ignore
-    }
-
-    try {
-      layer.sendDelay?.disconnect?.();
-      layer.sendDelay?.dispose?.();
-    } catch {
-      // ignore
-    }
-  }
-
-  /**
-   * Build a core layer from a preset using coreVoiceFactory.
-   * We keep the buss + FX stable, and connect:
-   *   synth -> preGain -> (dry gain -> coreBuss)
-   *                -> (reverb send -> coreReverb)
-   *                -> (delay send -> coreDelay)
-   */
-  _buildCoreLayerFromPreset(layerId, preset, { baseGain = 0.75, muted = false } = {}) {
-    // buildCoreLayerFromPreset is responsible for returning a playable synth graph
-    // It may return:
-    //  - Tone.PolySynth / Tone.Synth / Tone.Sampler / Tone.Instrument-ish object with triggerAttack/Release
-    //  - OR { synth, output } where output is an AudioNode to connect
-    const built = buildCoreLayerFromPreset(layerId, preset);
-
-    let synth = built;
-    let outputNode = built;
-
-    if (built && typeof built === "object" && built.synth && built.output) {
-      synth = built.synth;
-      outputNode = built.output;
-    }
-
-    // Pre-gain (lets us control FX sends without changing dry level math)
-    const preGain = new Tone.Gain(1);
-
-    // Dry path
-    const gain = new Tone.Gain(clamp01(baseGain)).connect(this.coreBuss);
-
-    // Meter (post-dry)
-    const meter = makeMeter();
-    gain.connect(meter);
-
-    // FX sends
-    const sendReverb = new Tone.Gain(0.18).connect(this.coreReverb);
-    const sendDelay = new Tone.Gain(0.12).connect(this.coreDelay);
-
-    // Connect graph
-    outputNode.connect(preGain);
-    preGain.connect(gain);
-    preGain.connect(sendReverb);
-    preGain.connect(sendDelay);
-
-    // Apply mute
-    gain.gain.value = muted ? 0 : clamp01(baseGain);
-
-    return {
-      synth,
-      output: outputNode,
-      preGain,
-      gain,
-      meter,
-      sendReverb,
-      sendDelay,
-      muted: !!muted,
-      baseGain: clamp01(baseGain),
-      presetId: preset?.id ?? null,
-    };
-  }
-
-  /**
-   * Orbit ARP loop (true polyrhythm model):
-   * - Loop interval is masterCycleSeconds / numerator
-   * - step wraps at numerator
-   * - rate controls note duration
-   *
-   * ✅ Always running.
-   * ✅ Only outputs when:
-   *   - orbit enabled
-   *   - orbit not muted
-   *   - orbit gain > 0
-   *   - arp != "off"
-   *   - there are HELD core notes (no autoplay)
-   */
   _makeOrbitArpLoop(orbitId) {
     const loop = new Tone.Loop((time) => {
       const orbit = this.orbits[orbitId];
@@ -920,10 +762,12 @@ class OMSEEngine {
         ...motion,
         step: (step + 1) % Math.max(1, steps),
       };
-    }, 0.25); // placeholder; overwritten by _refreshOrbitInterval()
+    }, 0.25);
 
     return loop;
   }
 }
 
 export const omseEngine = new OMSEEngine();
+
+window.omseEngine = omseEngine;

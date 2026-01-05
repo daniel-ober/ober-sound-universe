@@ -16,11 +16,11 @@ import { ATMOSPHERE_PRESETS } from "./atmospherePresets";
  */
 
 export const CORE_LAYER_PRESETS = {
-  // Best matches for your Galaxy0 master presets
+  // ✅ Use your new sampler ground tones here
   coreDawn: {
     id: "coreDawn",
     label: "Core Dawn",
-    groundId: "subAnchor",
+    groundId: "contrabassSampler", // ✅ WAS subAnchor
     harmonyId: "velvetKeys",
     atmosphereId: "auroraAir",
   },
@@ -28,7 +28,7 @@ export const CORE_LAYER_PRESETS = {
   solarDrift: {
     id: "solarDrift",
     label: "Solar Drift",
-    groundId: "duskDrone",
+    groundId: "deepSampler", // ✅ WAS duskDrone
     harmonyId: "warmChorusPad",
     atmosphereId: "shorelineMist",
   },

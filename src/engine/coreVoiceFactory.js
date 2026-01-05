@@ -22,7 +22,6 @@ function makeDrive(cfg) {
   const amt = clamp01(cfg?.amount ?? 0);
   if (amt <= 0.0001) return null;
 
-  // Distortion can get harsh fast — keep it subtle.
   const d = new Tone.Distortion({
     distortion: Math.max(0.01, Math.min(0.35, amt * 0.6)),
     wet: Math.max(0.05, Math.min(0.35, amt)),
@@ -59,10 +58,13 @@ function connectChain(source, nodes, destination) {
  * Builds a core layer synth graph from a preset.
  * Returns:
  *  {
- *    output,                // the final node you connect to layer.gain
- *    reverbSendGain?,       // gain to connect to reverb bus
- *    delaySendGain?,        // gain to connect to delay bus
- *    dispose()              // cleanup everything
+ *    output,
+ *    reverbSendGain?,
+ *    delaySendGain?,
+ *    dispose(),
+ *    synthType,
+ *    synth,
+ *    ready?        // Promise for async assets (sampler)
  *  }
  */
 export function buildCoreLayerFromPreset(preset) {
@@ -70,6 +72,7 @@ export function buildCoreLayerFromPreset(preset) {
   const p = preset?.params || {};
 
   const nodesToDispose = [];
+  let ready = null;
 
   // ----- Shared optional FX -----
   const chorus = makeChorus(p.chorus);
@@ -85,20 +88,88 @@ export function buildCoreLayerFromPreset(preset) {
   const delaySend = new Tone.Gain(clamp01(p.delaySend ?? 0));
   nodesToDispose.push(reverbSend, delaySend);
 
-  // ----- Build by engine type -----
+  // ✅ Sampler engine
+  if (engine === "sampler") {
+    const baseUrl = p.baseUrl || "/assets/samples/contrabass/";
+    const urls = p.urls || {};
+
+    let resolveReady;
+    let rejectReady;
+
+    // Primary ready = Sampler onload
+    const onloadPromise = new Promise((res, rej) => {
+      resolveReady = res;
+      rejectReady = rej;
+    });
+
+    const sampler = new Tone.Sampler({
+      urls,
+      baseUrl,
+      attack: p.attack ?? 0.01,
+      release: p.release ?? 1.6,
+      volume: p.volume ?? -6,
+      onload: () => resolveReady?.(),
+      // Tone.Sampler supports onerror in recent Tone versions; if not, Tone.loaded() still catches.
+      onerror: (e) => rejectReady?.(e),
+    });
+
+    nodesToDispose.push(sampler);
+
+    const filter = makeFilter(p.filter, "lowpass");
+    if (filter) nodesToDispose.push(filter);
+
+    const fxChain = [filter, drive, chorus, widener].filter(Boolean);
+
+    const out = new Tone.Gain(1);
+    nodesToDispose.push(out);
+
+    // Build chain
+    if (fxChain.length) connectChain(sampler, fxChain, out);
+    else sampler.connect(out);
+
+    out.connect(reverbSend);
+    out.connect(delaySend);
+
+    // ✅ Backstop: Tone.loaded() resolves when all ToneAudioBuffers are loaded.
+    // We race onloadPromise with Tone.loaded() so we don't hang if onload doesn't fire in some builds.
+    ready = Promise.race([
+      onloadPromise,
+      Tone.loaded().catch(() => {
+        // ignore
+      }),
+    ]);
+
+    return {
+      output: out,
+      reverbSendGain: reverbSend,
+      delaySendGain: delaySend,
+      dispose: () => nodesToDispose.forEach((n) => n.dispose?.()),
+      synthType: "sampler",
+      synth: sampler,
+      ready,
+    };
+  }
+
+  // ----- MonoSynth
   if (engine === "mono") {
     const synth = new Tone.MonoSynth({
       oscillator: p.oscillator ?? { type: "sine" },
-      envelope: p.envelope ?? { attack: 0.05, decay: 0.3, sustain: 0.8, release: 2.5 },
-      filter: p.filter ?? { type: "lowpass", frequency: 400, Q: 0.8 },
-      filterEnvelope: p.filterEnvelope ?? {
-        attack: 0.02,
-        decay: 0.2,
-        sustain: 0.2,
-        release: 1.0,
-        baseFrequency: 80,
-        octaves: 2,
+      envelope: p.envelope ?? {
+        attack: 0.05,
+        decay: 0.3,
+        sustain: 0.8,
+        release: 2.5,
       },
+      filter: p.filter ?? { type: "lowpass", frequency: 400, Q: 0.8 },
+      filterEnvelope:
+        p.filterEnvelope ?? {
+          attack: 0.02,
+          decay: 0.2,
+          sustain: 0.2,
+          release: 1.0,
+          baseFrequency: 80,
+          octaves: 2,
+        },
     });
 
     nodesToDispose.push(synth);
@@ -108,13 +179,11 @@ export function buildCoreLayerFromPreset(preset) {
 
     const fxChain = [filter, drive, chorus, widener].filter(Boolean);
 
-    // output bus: merge dry+send taps
     const out = new Tone.Gain(1);
     nodesToDispose.push(out);
 
     connectChain(synth, fxChain, out);
 
-    // taps for sends
     out.connect(reverbSend);
     out.connect(delaySend);
 
@@ -125,22 +194,16 @@ export function buildCoreLayerFromPreset(preset) {
       dispose: () => nodesToDispose.forEach((n) => n.dispose?.()),
       synthType: "mono",
       synth,
+      ready,
     };
   }
 
+  // ----- synthPad
   if (engine === "synthPad") {
-    // poly pad without noise
     const polyType = p.polyType || "synth";
-    const baseSynth =
-      polyType === "fm"
-        ? Tone.FMSynth
-        : Tone.Synth;
+    const baseSynth = polyType === "fm" ? Tone.FMSynth : Tone.Synth;
 
-    const initParams =
-      polyType === "fm"
-        ? (p.fm ?? {})
-        : (p.synth ?? {});
-
+    const initParams = polyType === "fm" ? p.fm ?? {} : p.synth ?? {};
     const poly = new Tone.PolySynth(baseSynth, initParams);
     nodesToDispose.push(poly);
 
@@ -164,11 +227,12 @@ export function buildCoreLayerFromPreset(preset) {
       dispose: () => nodesToDispose.forEach((n) => n.dispose?.()),
       synthType: "poly",
       synth: poly,
+      ready,
     };
   }
 
+  // ----- noisePad
   if (engine === "noisePad") {
-    // A hybrid: gentle poly pad + filtered noise texture
     const synth = new Tone.PolySynth(Tone.Synth, p.synth ?? {});
     nodesToDispose.push(synth);
 
@@ -184,11 +248,9 @@ export function buildCoreLayerFromPreset(preset) {
     const noiseGain = new Tone.Gain(clamp01(p.noise?.gain ?? 0.1));
     nodesToDispose.push(noiseGain);
 
-    // Merge both into one out
     const merge = new Tone.Gain(1);
     nodesToDispose.push(merge);
 
-    // synth chain
     if (synthFilter) {
       synth.connect(synthFilter);
       synthFilter.connect(merge);
@@ -196,12 +258,10 @@ export function buildCoreLayerFromPreset(preset) {
       synth.connect(merge);
     }
 
-    // noise chain
     noise.connect(noiseFilter);
     noiseFilter.connect(noiseGain);
     noiseGain.connect(merge);
 
-    // FX after merge
     const fxOut = new Tone.Gain(1);
     nodesToDispose.push(fxOut);
 
@@ -218,18 +278,15 @@ export function buildCoreLayerFromPreset(preset) {
       dispose: () => nodesToDispose.forEach((n) => n.dispose?.()),
       synthType: "hybrid",
       synth,
+      ready,
     };
   }
 
-  // default: poly synth/fm
+  // ----- default: poly synth/fm
   const polyType = p.polyType || "synth";
   const baseSynth = polyType === "fm" ? Tone.FMSynth : Tone.Synth;
 
-  const initParams =
-    polyType === "fm"
-      ? (p.fm ?? {})
-      : (p.synth ?? {});
-
+  const initParams = polyType === "fm" ? p.fm ?? {} : p.synth ?? {};
   const poly = new Tone.PolySynth(baseSynth, initParams);
   nodesToDispose.push(poly);
 
@@ -253,5 +310,6 @@ export function buildCoreLayerFromPreset(preset) {
     dispose: () => nodesToDispose.forEach((n) => n.dispose?.()),
     synthType: "poly",
     synth: poly,
+    ready,
   };
 }

@@ -8,9 +8,92 @@
  *  - deep, stable, non-harsh
  *  - controlled lows (no flub)
  *  - supports long-held chords without mud
+ *
+ * NOTE:
+ * - We now support sampler-based ground presets.
+ * - IDs MUST match what CORE_LAYER_PRESETS references (contrabassSampler, deepSampler).
  */
 
 export const GROUND_PRESETS = {
+  /**
+   * ✅ Sampler Ground: Contrabass
+   * Expects files at:
+   *  public/assets/samples/contrabass/C2.wav ... C3.wav
+   */
+  contrabassSampler: {
+    id: "contrabassSampler",
+    label: "Contrabass (Sampler)",
+    engine: "sampler",
+    params: {
+      // IMPORTANT: These must be PUBLIC paths (served from /public)
+      baseUrl: "/assets/samples/contrabass/",
+      // Tone.Sampler expects: { NOTE: "filename.wav" }
+      urls: {
+        C2: "C2.wav",
+        D2: "D2.wav",
+        E2: "E2.wav",
+        F2: "F2.wav",
+        G2: "G2.wav",
+        A2: "A2.wav",
+        B2: "B2.wav",
+        C3: "C3.wav",
+      },
+
+      // Keep sampler clean + punchy
+      attack: 0.005,
+      release: 1.25,
+      volume: -6,
+
+      // Optional tone shaping (post-sampler filter + subtle drive)
+      filter: { type: "lowpass", frequency: 650, Q: 0.9 },
+      drive: { amount: 0.04 },
+      chorus: null,
+      width: { amount: 0.0 },
+      reverbSend: 0.05,
+      delaySend: 0.0,
+    },
+  },
+
+  /**
+   * ✅ Sampler Ground: Deep
+   * Expects files at:
+   *  public/assets/samples/deep/C2.wav ... C3.wav
+   */
+  deepSampler: {
+    id: "deepSampler",
+    label: "Deep (Sampler)",
+    engine: "sampler",
+    params: {
+      baseUrl: "/assets/samples/deep/",
+      urls: {
+        C2: "C2.wav",
+        D2: "D2.wav",
+        E2: "E2.wav",
+        F2: "F2.wav",
+        G2: "G2.wav",
+        A2: "A2.wav",
+        B2: "B2.wav",
+        C3: "C3.wav",
+      },
+
+      // Slightly smoother / longer tail than contrabass
+      attack: 0.01,
+      release: 1.6,
+      volume: -7,
+
+      filter: { type: "lowpass", frequency: 520, Q: 0.85 },
+      drive: { amount: 0.03 },
+      chorus: null,
+      width: { amount: 0.0 },
+      reverbSend: 0.06,
+      delaySend: 0.0,
+    },
+  },
+
+  // ----------------------------
+  // Existing synth-based grounds
+  // ----------------------------
+
   subAnchor: {
     id: "subAnchor",
     label: "Sub Anchor",
