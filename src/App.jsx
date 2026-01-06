@@ -139,7 +139,7 @@ function sceneToOrbitState(scene) {
       arp: resolved.arp,
       rate: resolved.rate,
       enabled: typeof cfg.enabled === "boolean" ? cfg.enabled : true,
-      voicePresetId: cfg.voicePresetId || null,
+      voicePresetId: cfg.voicePresetId || null, // ✅ scene default
     };
 
     orbitPatterns[id] = !!resolved.patternOn;
@@ -212,6 +212,15 @@ function App() {
     });
   }, []);
 
+  // ✅ NEW: build the actual voice preset dropdown options from ORBIT_VOICE_PRESETS
+  const orbitVoiceOptions = useMemo(() => {
+    const src = ORBIT_VOICE_PRESETS || {};
+    return Object.keys(src).map((id) => {
+      const p = src[id] || {};
+      return { id, label: p.label || id };
+    });
+  }, []);
+
   const [coreLayers, setCoreLayers] = useState(() =>
     normalizeCore(activePresetConfig?.core)
   );
@@ -249,6 +258,23 @@ function App() {
     omseEngine.setOrbitTimeSig(orbitId, layer.timeSig || "4/4");
     omseEngine.setOrbitArp(orbitId, layer.arp || "off");
     omseEngine.setOrbitRate(orbitId, layer.rate || "8n");
+  };
+
+  // ✅ NEW: apply voice preset to engine (this is what makes it *actually sound different*)
+  const applyOrbitVoiceToEngine = (orbitId, layer) => {
+    if (!engineLive) return;
+    const presetId = layer?.voicePresetId || null;
+
+    if (!presetId) return; // "Default" => leave whatever is currently loaded
+    const preset = ORBIT_VOICE_PRESETS?.[presetId] || null;
+    if (!preset) {
+      console.warn(`[App] Unknown orbit voicePresetId "${presetId}" for ${orbitId}`);
+      return;
+    }
+
+    if (typeof omseEngine.setOrbitVoicePreset === "function") {
+      omseEngine.setOrbitVoicePreset(orbitId, preset);
+    }
   };
 
   const warnedPatternFnRef = useRef(false);
@@ -329,6 +355,7 @@ function App() {
     Object.entries(orbitLayers || {}).forEach(([orbitId, layer]) => {
       applyOrbitMixToEngine(orbitId, layer);
       applyOrbitMotionToEngine(orbitId, layer);
+      applyOrbitVoiceToEngine(orbitId, layer); // ✅ make sure voice matches state
     });
 
     Object.entries(orbitPatterns || {}).forEach(([orbitId, isOn]) => {
@@ -508,22 +535,12 @@ function App() {
       Object.entries(nextOrbitState.orbitLayers).forEach(([orbitId, layer]) => {
         applyOrbitMixToEngine(orbitId, layer);
         applyOrbitMotionToEngine(orbitId, layer);
+        applyOrbitVoiceToEngine(orbitId, layer); // ✅ voice on init too
       });
 
       Object.entries(nextOrbitState.orbitPatterns || {}).forEach(([oid, isOn]) =>
         setOrbitPatternStateSafe(oid, !!isOn)
       );
-
-      Object.entries(nextOrbitState.orbitLayers).forEach(([orbitId, layer]) => {
-        const voicePreset =
-          layer.voicePresetId && ORBIT_VOICE_PRESETS
-            ? ORBIT_VOICE_PRESETS[layer.voicePresetId]
-            : null;
-
-        if (voicePreset && typeof omseEngine.setOrbitVoicePreset === "function") {
-          omseEngine.setOrbitVoicePreset(orbitId, voicePreset);
-        }
-      });
     }
   };
 
@@ -568,6 +585,7 @@ function App() {
       Object.entries(nextOrbitState.orbitLayers).forEach(([orbitId, layer]) => {
         applyOrbitMixToEngine(orbitId, layer);
         applyOrbitMotionToEngine(orbitId, layer);
+        applyOrbitVoiceToEngine(orbitId, layer);
       });
 
       Object.entries(nextOrbitState.orbitPatterns || {}).forEach(([oid, isOn]) =>
@@ -588,22 +606,12 @@ function App() {
       Object.entries(nextOrbitState.orbitLayers).forEach(([orbitId, layer]) => {
         applyOrbitMixToEngine(orbitId, layer);
         applyOrbitMotionToEngine(orbitId, layer);
+        applyOrbitVoiceToEngine(orbitId, layer);
       });
 
       Object.entries(nextOrbitState.orbitPatterns || {}).forEach(([oid, isOn]) =>
         setOrbitPatternStateSafe(oid, !!isOn)
       );
-
-      Object.entries(nextOrbitState.orbitLayers).forEach(([orbitId, layer]) => {
-        const voicePreset =
-          layer.voicePresetId && ORBIT_VOICE_PRESETS
-            ? ORBIT_VOICE_PRESETS[layer.voicePresetId]
-            : null;
-
-        if (voicePreset && typeof omseEngine.setOrbitVoicePreset === "function") {
-          omseEngine.setOrbitVoicePreset(orbitId, voicePreset);
-        }
-      });
     }
   };
 
@@ -634,6 +642,7 @@ function App() {
     arp: "off",
     rate: "8n",
     enabled: true,
+    voicePresetId: null,
   };
 
   const handleOrbitGainChange = (orbitId, newPercent) => {
@@ -692,6 +701,20 @@ function App() {
       const nextLayer = { ...cur, enabled };
       const next = { ...prev, [orbitId]: nextLayer };
       applyOrbitMixToEngine(orbitId, nextLayer);
+      return next;
+    });
+  };
+
+  // ✅ NEW: live voice preset swap (this is the missing piece)
+  const handleOrbitVoicePresetChange = (orbitId, voicePresetId) => {
+    setOrbitLayers((prev) => {
+      const cur = prev[orbitId] || baseOrbitFallback;
+      const nextLayer = { ...cur, voicePresetId: voicePresetId || null };
+      const next = { ...prev, [orbitId]: nextLayer };
+
+      // apply immediately if engine is live
+      applyOrbitVoiceToEngine(orbitId, nextLayer);
+
       return next;
     });
   };
@@ -763,6 +786,9 @@ function App() {
                 onOrbitTimeSigChange={handleOrbitTimeSigChange}
                 onOrbitArpChange={handleOrbitArpChange}
                 onOrbitEnabledChange={handleOrbitEnabledChange}
+                // ✅ NEW
+                orbitVoiceOptions={orbitVoiceOptions}
+                onOrbitVoicePresetChange={handleOrbitVoicePresetChange}
                 bannerUrl={bannerUrl}
               />
             </div>

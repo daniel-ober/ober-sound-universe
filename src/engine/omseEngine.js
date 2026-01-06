@@ -109,6 +109,90 @@ function smoothParam(param, value, rampSeconds = 0.03) {
   }
 }
 
+/**
+ * Detect a "kind" for orbit synths so our arp + keyboard can drive them correctly.
+ */
+function detectOrbitVoiceKind(synth, voicePreset) {
+  const presetType =
+    (voicePreset?.type ||
+      voicePreset?.engine ||
+      voicePreset?.id ||
+      voicePreset?.name ||
+      "") + "";
+
+  const t = presetType.toLowerCase();
+
+  if (t.includes("sampler")) return "sampler";
+  if (t.includes("noise")) return "noise";
+  if (t.includes("metal")) return "metal";
+
+  const ctor = synth?.constructor?.name?.toLowerCase?.() || "";
+  if (ctor.includes("sampler")) return "sampler";
+  if (ctor.includes("noisesynth")) return "noise";
+  if (ctor.includes("metalsynth")) return "metal";
+  if (ctor.includes("monosynth")) return "mono";
+  if (ctor.includes("amsynth")) return "am";
+  if (ctor.includes("fmsynth")) return "fm";
+  if (ctor.includes("polysynth")) return "poly";
+
+  return "poly";
+}
+
+/**
+ * One place to play orbit notes, to ensure different voice types are driven correctly.
+ * - poly/mono/sampler: note-based
+ * - metal: pitch via frequency param + dur trigger
+ * - noise: dur trigger (no pitch)
+ */
+function playOrbitNote(orbit, note, noteLen, time, velocity = 0.85) {
+  const synth = orbit?.synth;
+  if (!synth) return;
+
+  const kind = orbit.voiceKind || "poly";
+
+  if (kind === "noise") {
+    try {
+      // NoiseSynth: triggerAttackRelease(duration, time, vel)
+      synth.triggerAttackRelease(noteLen, time, velocity);
+    } catch {
+      // ignore
+    }
+    return;
+  }
+
+  if (kind === "metal") {
+    try {
+      const hz = Tone.Frequency(note).toFrequency();
+      if (synth.frequency && typeof synth.frequency.setValueAtTime === "function") {
+        synth.frequency.setValueAtTime(hz, time);
+      } else if (synth.frequency && typeof synth.frequency.value === "number") {
+        synth.frequency.value = hz;
+      }
+      // MetalSynth: triggerAttackRelease(duration, time, vel)
+      synth.triggerAttackRelease(noteLen, time, velocity);
+      return;
+    } catch {
+      // fallthrough
+    }
+  }
+
+  // Generic synths/sampler: triggerAttackRelease(note, dur, time, vel)
+  try {
+    synth.triggerAttackRelease(note, noteLen, time, velocity);
+  } catch {
+    try {
+      synth.triggerAttack(note, time, velocity);
+      const sec =
+        typeof Tone.Time(noteLen).toSeconds === "function"
+          ? Tone.Time(noteLen).toSeconds()
+          : 0.25;
+      synth.triggerRelease(note, time + Math.max(0.01, sec));
+    } catch {
+      // ignore
+    }
+  }
+}
+
 class OMSEEngine {
   constructor() {
     this.initialized = false;
@@ -165,11 +249,21 @@ class OMSEEngine {
       orbitC: { timeSig: "4/4", arp: "off", rate: "8n", step: 0 },
     };
 
+    // ✅ NEW: orbit pattern gating (what your App toggle expects)
+    this.orbitPatternEnabled = {
+      orbitA: false,
+      orbitB: false,
+      orbitC: false,
+    };
+
     this.orbitPatterns = {
       orbitA: null,
       orbitB: null,
       orbitC: null,
     };
+
+    // ✅ Master cycle loop (for "allResolve" flash)
+    this.masterCycleLoop = null;
 
     this.master = {
       timeSig: "4/4",
@@ -181,6 +275,23 @@ class OMSEEngine {
       ground: null,
       harmony: null,
       atmosphere: null,
+    };
+
+    // ✅ UI event bus (audio-time accurate scheduling via Tone.Draw)
+    this._uiListeners = new Set();
+    this.onUIEvent = (fn) => {
+      if (typeof fn !== "function") return () => {};
+      this._uiListeners.add(fn);
+      return () => this._uiListeners.delete(fn);
+    };
+    this._emitUI = (type, payload) => {
+      for (const fn of this._uiListeners) {
+        try {
+          fn({ type, payload });
+        } catch {
+          // ignore listener errors
+        }
+      }
     };
   }
 
@@ -195,6 +306,7 @@ class OMSEEngine {
 
     this._refreshAllOrbitIntervals();
     this._ensureOrbitLoopsRunning();
+    this._ensureMasterCycleLoopRunning();
 
     this.initialized = true;
 
@@ -207,8 +319,6 @@ class OMSEEngine {
   _coreAttackLayer(layerId, layer, note, velocity = 0.9) {
     if (!layer?.synth) return;
     if (layer.muted) return;
-
-    // IMPORTANT: gain can be 0 if user mutes or if UI accidentally sent 0–100 vs 0–1
     if ((layer.gain?.gain?.value ?? 1) <= 0.0001) return;
 
     const t = layer.synthType || "poly";
@@ -236,7 +346,6 @@ class OMSEEngine {
     if (!layer?.synth) return;
 
     const t = layer.synthType || "poly";
-
     if (t === "loop") return;
 
     if (t === "sampler") {
@@ -266,7 +375,6 @@ class OMSEEngine {
     const layer = this.core?.layers?.[layerId];
     if (!layer?.synth) return;
     if (layer.synthType !== "loop") return;
-
     if (!this._coreLoopRunning[layerId]) return;
 
     try {
@@ -313,7 +421,6 @@ class OMSEEngine {
     const existing = this.core.layers[layerId];
 
     const preserved = {
-      // ✅ normalize here as well in case something stored 0–100 previously
       baseGain: normalizeGainLike(existing.baseGain ?? 0.8),
       muted: !!existing.muted,
       pan: existing.pan ?? 0,
@@ -358,11 +465,9 @@ class OMSEEngine {
     next.baseGain = preserved.baseGain;
     next.pan = preserved.pan;
 
-    // Apply preserved gain/mute state
     smoothParam(next.gain?.gain, next.muted ? 0 : next.baseGain, 0.01);
 
     this.core.layers[layerId] = next;
-
     this._coreLoopRunning[layerId] = false;
 
     if (next.ready && typeof next.ready.then === "function") {
@@ -446,6 +551,25 @@ class OMSEEngine {
     orbit.pan = v;
 
     smoothParam(orbit.panner.pan, v, 0.03);
+  }
+
+  // ---------------------------
+  // ORBIT PATTERN ON/OFF  ✅ (what App expects)
+  // ---------------------------
+  setOrbitPatternState(orbitId, isOn) {
+    const id = orbitId;
+    if (!this.orbitPatternEnabled?.hasOwnProperty?.(id)) return;
+
+    const v = !!isOn;
+    this.orbitPatternEnabled[id] = v;
+
+    // optional: reset step when turning on
+    if (v) {
+      const prev = this.orbitMotion?.[id] || {};
+      this.orbitMotion[id] = { ...prev, step: 0 };
+    }
+
+    this._ensureOrbitLoopsRunning();
   }
 
   // ---------------------------
@@ -556,10 +680,23 @@ class OMSEEngine {
 
     const map = this.activeNotes[voiceId];
     if (!map) return;
+    if (map.has(note)) return;
 
-    if (!map.has(note)) {
+    // ✅ For noise/metal, there is no real sustain. Use short bursts and ignore noteOff.
+    if (orbit.voiceKind === "noise" || orbit.voiceKind === "metal") {
+      try {
+        playOrbitNote(orbit, note, "8n", Tone.now(), velocity);
+      } catch {}
+      map.set(note, orbit.synth);
+      return;
+    }
+
+    // ✅ Normal note-based synths/sampler
+    try {
       orbit.synth.triggerAttack(note, undefined, velocity);
       map.set(note, orbit.synth);
+    } catch {
+      // ignore
     }
   }
 
@@ -592,6 +729,9 @@ class OMSEEngine {
 
     const ownerSynth = map.get(note);
     map.delete(note);
+
+    // ✅ For noise/metal we used one-shots; nothing to release
+    if (orbit.voiceKind === "noise" || orbit.voiceKind === "metal") return;
 
     try {
       ownerSynth?.triggerRelease?.(note);
@@ -660,6 +800,7 @@ class OMSEEngine {
     if (!orbit) return;
 
     try {
+      // stop any held notes mapped to old synth
       const map = this.activeNotes?.[orbitId];
       if (map && map.size) {
         for (const [note, ownerSynth] of map.entries()) {
@@ -670,11 +811,28 @@ class OMSEEngine {
         map.clear();
       }
 
-      orbit.synth?.disconnect?.();
-      orbit.synth?.dispose?.();
+      // tear down old filter if present
+      if (orbit._filter) {
+        try {
+          orbit._filter.disconnect();
+          orbit._filter.dispose();
+        } catch {}
+        orbit._filter = null;
+      }
 
+      // dispose old synth
+      try {
+        orbit.synth?.disconnect?.();
+        orbit.synth?.dispose?.();
+      } catch {}
+
+      // build new synth from preset (factory)
       const synth = buildOrbitVoice(voicePreset);
 
+      // store kind so arp + keyboard can drive it correctly
+      orbit.voiceKind = detectOrbitVoiceKind(synth, voicePreset);
+
+      // optional filter insert
       const filterCfg = voicePreset?.params?.filter;
       if (filterCfg) {
         const f = new Tone.Filter({
@@ -686,11 +844,6 @@ class OMSEEngine {
         f.connect(orbit.panner);
         orbit._filter = f;
       } else {
-        if (orbit._filter) {
-          orbit._filter.disconnect();
-          orbit._filter.dispose();
-          orbit._filter = null;
-        }
         synth.connect(orbit.panner);
       }
 
@@ -757,6 +910,10 @@ class OMSEEngine {
 
   _refreshAllOrbitIntervals() {
     ["orbitA", "orbitB", "orbitC"].forEach((id) => this._refreshOrbitInterval(id));
+
+    if (this.masterCycleLoop) {
+      this.masterCycleLoop.interval = this._getMasterCycleSeconds();
+    }
   }
 
   _refreshOrbitInterval(orbitId) {
@@ -780,6 +937,24 @@ class OMSEEngine {
       if (!loop) return;
       if (loop.state !== "started") loop.start(0);
     });
+
+    this._ensureMasterCycleLoopRunning();
+  }
+
+  // ✅ master-cycle loop builder + runner (allResolve flash)
+  _makeMasterCycleLoop() {
+    const loop = new Tone.Loop((time) => {
+      Tone.Draw.schedule(() => {
+        this._emitUI("allResolve", {});
+      }, time);
+    }, this._getMasterCycleSeconds());
+
+    return loop;
+  }
+
+  _ensureMasterCycleLoopRunning() {
+    if (!this.masterCycleLoop) return;
+    if (this.masterCycleLoop.state !== "started") this.masterCycleLoop.start(0);
   }
 
   // ---------------------------
@@ -835,6 +1010,8 @@ class OMSEEngine {
     this.orbitPatterns.orbitB = this._makeOrbitArpLoop("orbitB");
     this.orbitPatterns.orbitC = this._makeOrbitArpLoop("orbitC");
 
+    this.masterCycleLoop = this._makeMasterCycleLoop();
+
     this._refreshAllOrbitIntervals();
   }
 
@@ -871,8 +1048,10 @@ class OMSEEngine {
     built.output.connect(outputPanner);
     outputPanner.connect(gain);
 
-    if (built.reverbSendGain && this.coreReverb) built.reverbSendGain.connect(this.coreReverb);
-    if (built.delaySendGain && this.coreDelay) built.delaySendGain.connect(this.coreDelay);
+    if (built.reverbSendGain && this.coreReverb)
+      built.reverbSendGain.connect(this.coreReverb);
+    if (built.delaySendGain && this.coreDelay)
+      built.delaySendGain.connect(this.coreDelay);
 
     return {
       synth: built.synth,
@@ -914,6 +1093,7 @@ class OMSEEngine {
       baseGain: g,
       pan: typeof pan === "number" ? pan : 0,
       _filter: null,
+      voiceKind: detectOrbitVoiceKind(synth, { engine: "synth" }),
     };
   }
 
@@ -924,6 +1104,9 @@ class OMSEEngine {
 
       const enabled = !!this.orbitConfig?.[orbitId]?.enabled;
       if (!enabled) return;
+
+      // ✅ pattern gating (what your UI toggle is meant to do)
+      if (!this.orbitPatternEnabled?.[orbitId]) return;
 
       if (orbit.muted) return;
       if ((orbit.gain?.gain?.value ?? 0) <= 0.0001) return;
@@ -936,6 +1119,7 @@ class OMSEEngine {
       if (!chord.length) return;
 
       const { steps } = parseTimeSig(motion.timeSig || "4/4");
+      const totalSteps = Math.max(1, steps);
       const noteLen = motion.rate || "8n";
 
       const sorted = chord
@@ -946,7 +1130,7 @@ class OMSEEngine {
       if (!sorted.length) return;
 
       const step = motion.step || 0;
-      const idxBase = step % Math.max(1, steps);
+      const idxBase = step % totalSteps;
 
       let pick = 0;
 
@@ -982,11 +1166,20 @@ class OMSEEngine {
       }
 
       const note = sorted[pick] || sorted[0];
-      orbit.synth.triggerAttackRelease(note, noteLen, time);
+
+      playOrbitNote(orbit, note, noteLen, time, 0.85);
+
+      const nextStep = (step + 1) % totalSteps;
+
+      if (nextStep === 0) {
+        Tone.Draw.schedule(() => {
+          this._emitUI("orbitRevolution", { orbitId });
+        }, time);
+      }
 
       this.orbitMotion[orbitId] = {
         ...motion,
-        step: (step + 1) % Math.max(1, steps),
+        step: nextStep,
       };
     }, 0.25);
 

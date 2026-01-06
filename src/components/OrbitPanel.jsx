@@ -1,16 +1,13 @@
 // src/components/OrbitPanel.jsx
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import "./OrbitPanel.css";
 import { OrbitMeter } from "./OrbitMeter";
+import { onOrbitPulse } from "../utils/orbitPulseBus";
+import { Knob } from "./Knob";
 
-/**
- * MUSICAL TIME SIG OPTIONS (Curated)
- * ---------------------------------
- * We treat numerator as "pulses per MASTER cycle" (engine timing),
- * and denominator as a musical subdivision label (UI clarity).
- *
- * If presets load a value not listed, we still support it as a "Custom" option.
- */
+/* -----------------------------
+ * TIME SIGNATURE METADATA
+ * ----------------------------- */
 
 const SUBDIVISION_LABEL = {
   2: "HALF NOTES",
@@ -38,26 +35,24 @@ const TIME_SIG_GROUPS = [
 function parseTimeSig(sig) {
   if (typeof sig !== "string") return { steps: 4, denom: 4 };
   const [a, b] = sig.split("/");
-  const steps = Number.parseInt(a, 10);
-  const denom = Number.parseInt(b, 10);
   return {
-    steps: Number.isFinite(steps) ? steps : 4,
-    denom: Number.isFinite(denom) ? denom : 4,
+    steps: parseInt(a, 10) || 4,
+    denom: parseInt(b, 10) || 4,
   };
 }
 
 function formatTimeSigLabel(sig) {
   const { denom } = parseTimeSig(sig);
-  const denomLabel = SUBDIVISION_LABEL[denom] || `/${denom}`;
-  return `${sig} — ${denomLabel}`;
+  return `${sig} — ${SUBDIVISION_LABEL[denom] || denom}`;
 }
 
 function isInCuratedList(sig) {
-  for (const g of TIME_SIG_GROUPS) {
-    if (g.options.includes(sig)) return true;
-  }
-  return false;
+  return TIME_SIG_GROUPS.some((g) => g.options.includes(sig));
 }
+
+/* -----------------------------
+ * ARP OPTIONS
+ * ----------------------------- */
 
 const ARP_OPTIONS = [
   { id: "off", label: "Off" },
@@ -66,14 +61,11 @@ const ARP_OPTIONS = [
   { id: "upDown", label: "Up / Down" },
   { id: "downUp", label: "Down / Up" },
   { id: "random", label: "Random" },
-
-  // extra “motion” flavors (UI only for now)
-  { id: "pulse", label: "Pulse" },
-  { id: "steps", label: "Steps" },
-  { id: "glass", label: "Glass" },
-  { id: "shimmer", label: "Shimmer" },
-  { id: "drone", label: "Drone" },
 ];
+
+/* -----------------------------
+ * ORBIT METADATA
+ * ----------------------------- */
 
 const ORBITS_META = [
   {
@@ -96,106 +88,109 @@ const ORBITS_META = [
   },
 ];
 
-// Helper: safe access + defaults
-function getOrbitState(orbitLayers, orbitId) {
-  const base = orbitLayers?.[orbitId] || {};
-  return {
-    gain: typeof base.gain === "number" ? base.gain : 0,
-    muted: !!base.muted,
-    pan: typeof base.pan === "number" ? base.pan : 0,
-    timeSig: base.timeSig || "4/4",
-    arp: base.arp || "off",
-    enabled: typeof base.enabled === "boolean" ? base.enabled : true,
-  };
-}
+/* -----------------------------
+ * HELPERS
+ * ----------------------------- */
 
 function clamp(n, min, max) {
   const v = Number(n);
-  if (Number.isNaN(v)) return min;
+  if (!Number.isFinite(v)) return min;
   return Math.max(min, Math.min(max, v));
 }
 
+function toNumOr(v, fallback) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function getOrbitState(layers, id) {
+  const o = layers?.[id] || {};
+  return {
+    // ✅ accept numbers OR numeric strings so UI always reflects reality
+    gain: clamp(toNumOr(o.gain, 0), 0, 100),
+    pan: clamp(toNumOr(o.pan, 0), -1, 1),
+    muted: !!o.muted,
+    enabled: o.enabled !== false,
+    timeSig: o.timeSig || "4/4",
+    arp: o.arp || "off",
+    voicePresetId: o.voicePresetId || "",
+  };
+}
+
+function formatGain(v) {
+  return `${Math.round(v)}%`;
+}
+
+function formatPan(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "C";
+  if (Math.abs(n) < 0.01) return "C";
+  return n < 0 ? `L ${Math.round(Math.abs(n) * 100)}%` : `R ${Math.round(n * 100)}%`;
+}
+
+/* =============================
+ * COMPONENT
+ * ============================= */
+
 export function OrbitPanel({
   audioReady,
-
-  // current orbit state (from App / Firestore)
   orbitLayers,
-  orbitPatterns,
-
-  // orbit-scene preset (single source of truth)
   orbitSceneId,
-  orbitSceneOptions = [], // [{ id, label, description?, vibeTags? }]
+  orbitSceneOptions = [],
   onOrbitSceneChange,
 
-  // audio wired actions
   onOrbitGainChange,
   onOrbitMuteToggle,
   onOrbitPanChange,
-
-  // planning controls (wired in App)
   onOrbitTimeSigChange,
   onOrbitArpChange,
   onOrbitEnabledChange,
-}) {
-  const orbitStatusText = audioReady ? "READY" : "PLANNING MODE";
 
+  orbitVoiceOptions = [], // [{ id, label }]
+  onOrbitVoicePresetChange,
+}) {
   const derived = useMemo(() => {
-    const map = {};
-    for (const o of ORBITS_META) map[o.id] = getOrbitState(orbitLayers, o.id);
-    return map;
+    const out = {};
+    ORBITS_META.forEach((o) => {
+      out[o.id] = getOrbitState(orbitLayers, o.id);
+    });
+    return out;
   }, [orbitLayers]);
 
-  function handleOrbitSceneChange(nextId) {
-    onOrbitSceneChange?.(nextId);
-  }
+  /* -----------------------------
+   * VISUAL PULSE HANDLING
+   * ----------------------------- */
 
-  function handleTimeSigChange(orbitId, next) {
-    onOrbitTimeSigChange?.(orbitId, next);
-  }
+  const [panelFlash, setPanelFlash] = useState(false);
+  const [badgePulse, setBadgePulse] = useState({});
+  const flashTimer = useRef(null);
+  const badgeTimers = useRef({});
 
-  function handleArpChange(orbitId, next) {
-    onOrbitArpChange?.(orbitId, next);
-  }
+  useEffect(() => {
+    const off = onOrbitPulse((evt) => {
+      if (!evt) return;
 
-  function handleEnabledToggle(orbitId, currentEnabled) {
-    const next = !currentEnabled;
-    onOrbitEnabledChange?.(orbitId, next);
-  }
+      if (evt.type === "allResolve") {
+        setPanelFlash(true);
+        clearTimeout(flashTimer.current);
+        flashTimer.current = setTimeout(() => setPanelFlash(false), 500);
+      }
 
-  // Build select options per-orbit, including a “Custom” value if needed
-  function getTimeSigSelectOptions(currentValue) {
-    const curatedHas = isInCuratedList(currentValue);
-    return { curatedHas, currentValue };
-  }
+      if (evt.type === "orbitRevolution" && evt.orbitId) {
+        setBadgePulse((p) => ({ ...p, [evt.orbitId]: true }));
+        clearTimeout(badgeTimers.current[evt.orbitId]);
+        badgeTimers.current[evt.orbitId] = setTimeout(() => {
+          setBadgePulse((p) => ({ ...p, [evt.orbitId]: false }));
+        }, 500);
+      }
+    });
+
+    return () => off?.();
+  }, []);
 
   return (
-    <section className="orbits-column">
-      {/* Header */}
-      <div className="orbits-header">
-        <div className="orbits-header-left">
-          <h3 className="orbits-title">ORBIT VOICES</h3>
-          <p className="orbits-subtitle">
-            Orbit presets define the combined motion: which orbits are enabled,
-            their time signatures, arp patterns, and mix.
-          </p>
-
-          <p className="orbits-subtitle" style={{ marginTop: 6, opacity: 0.9 }}>
-            <b>Musical note:</b> Denominator labels the subdivision (quarters/eighths/etc).{" "}
-            <b>In OMSE, the numerator sets pulses per master cycle.</b>
-          </p>
-        </div>
-
-        <div className="orbits-status">
-          <span className="orbits-status-label">ORBIT STATUS:</span>
-          <span className={audioReady ? "orbits-status-ok" : "orbits-status-bad"}>
-            {orbitStatusText}
-          </span>
-        </div>
-      </div>
-
-      <div className="orbits-top-rule" />
-
-      {/* TOP RACK: single orbit preset */}
+    <section className={`orbits-column ${panelFlash ? "orbits-column--flash" : ""}`}>
+      {/* ORBIT PRESET */}
       <div className="orbits-rack">
         <div className="orbits-rack-bar">
           <span className="orbits-rack-title">ORBIT PRESET</span>
@@ -203,106 +198,88 @@ export function OrbitPanel({
         </div>
 
         <div className="orbits-rack-body">
-          <div className="orbits-rack-row">
-            <select
-              className="orbits-select"
-              value={orbitSceneId || (orbitSceneOptions[0]?.id ?? "")}
-              onChange={(e) => handleOrbitSceneChange(e.target.value)}
-              disabled={!orbitSceneOptions?.length}
-              title={
-                orbitSceneOptions?.length
-                  ? "Select an orbit scene preset"
-                  : "No orbit presets loaded yet"
-              }
-            >
-              {orbitSceneOptions?.length ? (
-                orbitSceneOptions.map((p) => (
-                  <option key={p.id} value={p.id} title={p.description || ""}>
-                    {p.label}
-                  </option>
-                ))
-              ) : (
-                <option value="">No orbit presets</option>
-              )}
-            </select>
-
-            <div className="orbits-rack-hint">
-              <span className="orbits-hint-dot" />
-              <span>
-                {onOrbitSceneChange ? "Orbit preset wired" : "UI ready (wire orbit preset selection in App)"}
-              </span>
-            </div>
-          </div>
+          <select
+            className="orbits-select"
+            value={orbitSceneId}
+            onChange={(e) => onOrbitSceneChange?.(e.target.value)}
+          >
+            {orbitSceneOptions.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
-      {/* MIXER COLUMNS */}
+      {/* ORBIT CHANNELS */}
       <div className="orbits-mixer-grid">
         {ORBITS_META.map(({ id, label, subtitle, badgeClass }) => {
-          const state = getOrbitState(orbitLayers, id);
-          const gain = clamp(state.gain, 0, 100);
-          const pan = clamp(state.pan, -1, 1);
-
-          const timeSigValue = derived?.[id]?.timeSig ?? "4/4";
-          const arpValue = derived?.[id]?.arp ?? "off";
-          const enabledValue =
-            typeof derived?.[id]?.enabled === "boolean" ? derived[id].enabled : true;
-
-          const { curatedHas } = getTimeSigSelectOptions(timeSigValue);
+          const s = derived[id];
+          const curatedHas = isInCuratedList(s.timeSig);
+          const disabled = !audioReady || !s.enabled;
 
           return (
             <article
               key={id}
-              className={"orbit-channel" + (enabledValue ? "" : " orbit-channel--disabled")}
+              className={`orbit-channel ${!s.enabled ? "orbit-channel--disabled" : ""}`}
             >
-              <div className="orbit-channel-sheen" />
-
-              {/* Top */}
               <div className="orbit-channel-top">
-                <div className={`orbit-badge ${badgeClass}`} />
-
+                <div
+                  className={`orbit-badge ${badgeClass} ${
+                    badgePulse[id] ? "orbit-badge--pulse" : ""
+                  }`}
+                />
                 <div className="orbit-channel-meta">
                   <div className="orbit-channel-nameRow">
                     <div className="orbit-channel-name">{label}</div>
-
                     <button
-                      type="button"
-                      className={"orbit-enable" + (enabledValue ? " on" : " off")}
-                      onClick={() => handleEnabledToggle(id, enabledValue)}
-                      title="Enable/disable this orbit"
+                      className={`orbit-enable ${s.enabled ? "on" : "off"}`}
+                      onClick={() => onOrbitEnabledChange?.(id, !s.enabled)}
                     >
-                      {enabledValue ? "ON" : "OFF"}
+                      {s.enabled ? "ON" : "OFF"}
                     </button>
                   </div>
-
                   <div className="orbit-channel-desc">{subtitle}</div>
-
-                  <div className="orbit-channel-status">
-                    <span>STATUS</span>
-                    <b>{audioReady ? "ENGINE ACTIVE" : "PLACEHOLDER"}</b>
-                  </div>
                 </div>
               </div>
 
-              {/* Planning controls (reflect App state) */}
+              {/* FIELDS */}
               <div className="orbit-channel-fields">
+                {/* VOICE */}
+                <label className="orbit-mini-field">
+                  <span>VOICE</span>
+                  <select
+                    className="orbits-select orbits-select--micro"
+                    value={s.voicePresetId || ""}
+                    onChange={(e) => onOrbitVoicePresetChange?.(id, e.target.value || null)}
+                    title="Changes the actual Tone instrument used for this orbit"
+                    disabled={disabled}
+                  >
+                    <option value="">Default</option>
+                    {orbitVoiceOptions.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.label || v.id}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                {/* TIME SIG */}
                 <label className="orbit-mini-field">
                   <span>TIME SIG</span>
                   <select
                     className="orbits-select orbits-select--micro"
-                    value={timeSigValue}
-                    onChange={(e) => handleTimeSigChange(id, e.target.value)}
-                    title="Denominator labels subdivision; numerator sets pulses per master cycle (OMSE)"
+                    value={s.timeSig}
+                    onChange={(e) => onOrbitTimeSigChange?.(id, e.target.value)}
+                    disabled={disabled}
                   >
                     {!curatedHas && (
-                      <option key={`custom-${timeSigValue}`} value={timeSigValue}>
-                        {`Custom: ${formatTimeSigLabel(timeSigValue)}`}
-                      </option>
+                      <option value={s.timeSig}>Custom: {formatTimeSigLabel(s.timeSig)}</option>
                     )}
-
-                    {TIME_SIG_GROUPS.map((group) => (
-                      <optgroup key={group.label} label={group.label}>
-                        {group.options.map((sig) => (
+                    {TIME_SIG_GROUPS.map((g) => (
+                      <optgroup key={g.label} label={g.label}>
+                        {g.options.map((sig) => (
                           <option key={sig} value={sig}>
                             {formatTimeSigLabel(sig)}
                           </option>
@@ -312,71 +289,60 @@ export function OrbitPanel({
                   </select>
                 </label>
 
+                {/* ARP */}
                 <label className="orbit-mini-field">
                   <span>ARP</span>
                   <select
                     className="orbits-select orbits-select--micro"
-                    value={arpValue}
-                    onChange={(e) => handleArpChange(id, e.target.value)}
+                    value={s.arp}
+                    onChange={(e) => onOrbitArpChange?.(id, e.target.value)}
+                    disabled={disabled}
                   >
-                    {ARP_OPTIONS.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.label}
+                    {ARP_OPTIONS.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.label}
                       </option>
                     ))}
                   </select>
                 </label>
               </div>
 
-              {/* Optional meter */}
               <div className="orbit-meter-wrap">
                 <OrbitMeter orbitId={id} audioReady={audioReady} />
               </div>
 
-              {/* Audio mix controls */}
+              {/* MIX (KNOBS) */}
               <div className="orbit-channel-fader">
-                <div className="orbit-readouts">
-                  <div className="orbit-readout">
-                    <span>GAIN</span>
-                    <b>{gain}%</b>
-                  </div>
-                  <div className="orbit-readout">
-                    <span>PAN</span>
-                    <b>{pan.toFixed(2)}</b>
-                  </div>
-                </div>
+                <div className="orbit-knob-row">
+                  <Knob
+                    label="GAIN"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={s.gain}
+                    disabled={disabled}
+                    onChange={(v) => onOrbitGainChange?.(id, v)} // ✅ number
+                    formatValue={formatGain}
+                  />
 
-                <input
-                  className="orbit-slider-vert"
-                  type="range"
-                  min={0}
-                  max={100}
-                  value={gain}
-                  onChange={(e) => onOrbitGainChange?.(id, clamp(e.target.value, 0, 100))}
-                  disabled={!audioReady || !onOrbitGainChange}
-                />
-
-                <div className="orbit-pan">
-                  <span className="orbit-pan-label">PAN</span>
-                  <input
-                    className="orbit-pan-slider"
-                    type="range"
+                  <Knob
+                    label="PAN"
                     min={-1}
                     max={1}
                     step={0.01}
-                    value={pan}
-                    onChange={(e) => onOrbitPanChange?.(id, clamp(e.target.value, -1, 1))}
-                    disabled={!audioReady || !onOrbitPanChange}
+                    value={s.pan}
+                    disabled={disabled}
+                    onChange={(v) => onOrbitPanChange?.(id, v)} // ✅ number
+                    formatValue={formatPan}
                   />
                 </div>
 
                 <button
-                  type="button"
-                  className={"orbit-mute" + (state.muted ? " orbit-mute--active" : "")}
+                  className={`orbit-mute ${s.muted ? "orbit-mute--active" : ""}`}
                   onClick={() => onOrbitMuteToggle?.(id)}
-                  disabled={!audioReady || !onOrbitMuteToggle}
+                  disabled={!audioReady}
                 >
-                  {state.muted ? "UNMUTE" : "MUTE"}
+                  {s.muted ? "UNMUTE" : "MUTE"}
                 </button>
               </div>
             </article>

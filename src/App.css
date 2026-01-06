@@ -430,7 +430,7 @@ body {
   width: 100%;
   height: 58px;
   border-radius: 999px;
-  background: url("/assets/skins/spectrum-frame.png") center/cover no-repeat;
+  /* background: url("/assets/skins/spectrum-frame.png") center/cover no-repeat; */
   border: none;
   box-shadow: none;
   position: relative;

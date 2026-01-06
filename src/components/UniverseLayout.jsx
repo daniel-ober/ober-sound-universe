@@ -25,6 +25,10 @@ export function UniverseLayout({
   onOrbitArpChange,
   onOrbitEnabledChange,
 
+  // ✅ NEW: voice preset wiring
+  orbitVoiceOptions,
+  onOrbitVoicePresetChange,
+
   // visuals
   bannerUrl,
 }) {
@@ -53,6 +57,9 @@ export function UniverseLayout({
           onOrbitTimeSigChange={onOrbitTimeSigChange}
           onOrbitArpChange={onOrbitArpChange}
           onOrbitEnabledChange={onOrbitEnabledChange}
+          // ✅ NEW
+          orbitVoiceOptions={orbitVoiceOptions}
+          onOrbitVoicePresetChange={onOrbitVoicePresetChange}
         />
       </div>
     </main>
