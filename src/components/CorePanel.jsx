@@ -10,6 +10,10 @@ export function CorePanel({
   onLayerGainChange,
   onLayerMuteToggle,
 
+  // ✅ NEW: per-layer preset options + handler
+  corePresetOptions = [], // [{ id, label }]
+  onLayerPresetChange,
+
   // optional UI bits
   bannerUrl,
   sceneName,
@@ -43,6 +47,9 @@ export function CorePanel({
         coreLayers={coreLayers}
         onLayerGainChange={onLayerGainChange}
         onLayerMuteToggle={onLayerMuteToggle}
+        // ✅ NEW
+        corePresetOptions={corePresetOptions}
+        onLayerPresetChange={onLayerPresetChange}
         bannerUrl={bannerUrl}
         sceneName={sceneName}
       />

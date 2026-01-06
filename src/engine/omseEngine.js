@@ -277,6 +277,17 @@ class OMSEEngine {
       atmosphere: null,
     };
 
+    // ✅ NEW: resolver hook so UI can give us a presetId (string)
+    // and the app decides how to map that to the full preset object.
+    this._corePresetResolver = null;
+    this.setCorePresetResolver = (fn) => {
+      if (typeof fn !== "function") {
+        this._corePresetResolver = null;
+        return;
+      }
+      this._corePresetResolver = fn;
+    };
+
     // ✅ UI event bus (audio-time accurate scheduling via Tone.Draw)
     this._uiListeners = new Set();
     this.onUIEvent = (fn) => {
@@ -412,13 +423,41 @@ class OMSEEngine {
     }
   }
 
-  async setCoreLayerPreset(layerId, preset) {
+  /**
+   * ✅ Accepts either:
+   *  - preset object (full config)
+   *  - presetId string (resolved via this._corePresetResolver)
+   *  - null / "" meaning "default (scene core)"
+   */
+  async setCoreLayerPreset(layerId, presetOrId) {
     if (!this.core?.layers || !this.core.layers[layerId]) {
-      this._pendingCorePresetByLayer[layerId] = preset || null;
+      this._pendingCorePresetByLayer[layerId] = presetOrId || null;
       return;
     }
 
     const existing = this.core.layers[layerId];
+
+    // Determine presetId + resolved preset object
+    let presetId = "";
+    let presetObj = null;
+
+    if (typeof presetOrId === "string") {
+      presetId = presetOrId || "";
+      if (presetId && typeof this._corePresetResolver === "function") {
+        try {
+          presetObj = this._corePresetResolver(presetId) || null;
+        } catch (e) {
+          console.warn("[OMSE] core preset resolver threw:", e);
+          presetObj = null;
+        }
+      }
+    } else if (presetOrId && typeof presetOrId === "object") {
+      presetObj = presetOrId;
+      presetId = presetObj.id || presetObj.name || "";
+    } else {
+      presetId = "";
+      presetObj = null;
+    }
 
     const preserved = {
       baseGain: normalizeGainLike(existing.baseGain ?? 0.8),
@@ -455,11 +494,10 @@ class OMSEEngine {
       existing?.meter?.dispose?.();
     } catch {}
 
-    const next = this._buildCoreLayerFromPreset(
-      preset,
-      preserved.baseGain,
-      preserved.pan
-    );
+    const next = this._buildCoreLayerFromPreset(presetObj, preserved.baseGain, preserved.pan);
+
+    // ✅ store presetId so UI can read it back
+    next.presetId = presetId;
 
     next.muted = preserved.muted;
     next.baseGain = preserved.baseGain;
@@ -986,9 +1024,13 @@ class OMSEEngine {
     this.coreMeter = makeMeter();
     this.coreBuss.connect(this.coreMeter);
 
+    // Default core layers (scene default) => presetId = ""
     this.core.layers.ground = this._buildCoreLayerFromPreset(null, 0.9, 0);
+    this.core.layers.ground.presetId = "";
     this.core.layers.harmony = this._buildCoreLayerFromPreset(null, 0.8, 0);
+    this.core.layers.harmony.presetId = "";
     this.core.layers.atmosphere = this._buildCoreLayerFromPreset(null, 0.7, 0);
+    this.core.layers.atmosphere.presetId = "";
 
     this.orbits.orbitA = this._buildOrbitVoice({
       type: "square",
@@ -1048,10 +1090,8 @@ class OMSEEngine {
     built.output.connect(outputPanner);
     outputPanner.connect(gain);
 
-    if (built.reverbSendGain && this.coreReverb)
-      built.reverbSendGain.connect(this.coreReverb);
-    if (built.delaySendGain && this.coreDelay)
-      built.delaySendGain.connect(this.coreDelay);
+    if (built.reverbSendGain && this.coreReverb) built.reverbSendGain.connect(this.coreReverb);
+    if (built.delaySendGain && this.coreDelay) built.delaySendGain.connect(this.coreDelay);
 
     return {
       synth: built.synth,
@@ -1062,6 +1102,7 @@ class OMSEEngine {
       meter,
       muted: false,
       baseGain: g,
+      presetId: "", // UI reads this; caller updates on setCoreLayerPreset()
       ready: built.ready,
       _disposeBuilt: built.dispose,
     };

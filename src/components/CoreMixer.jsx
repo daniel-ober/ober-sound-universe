@@ -60,6 +60,11 @@ export function CoreMixer({
   coreLayers,
   onLayerGainChange,
   onLayerMuteToggle,
+
+  // ✅ NEW: per-layer preset options
+  corePresetOptions = [], // [{ id, label }]
+  onLayerPresetChange,
+
   bannerUrl,
   sceneName,
 }) {
@@ -159,6 +164,9 @@ export function CoreMixer({
           const layerState = coreLayers?.[id] || { gain: 0, muted: false };
           const percent = uiPercentByLayer?.[id] ?? toUiPercent(layerState.gain);
 
+          const presetId = layerState?.presetId || "";
+          const defaultLabel = `Default (${bannerTitle})`;
+
           return (
             <div key={id} className={`core-strip ${themeClass}`}>
               <div className="core-strip-bg" />
@@ -170,6 +178,25 @@ export function CoreMixer({
                 </div>
 
                 <div className="core-strip-meta">
+                  {/* ✅ NEW: preset picker */}
+                  <label className="core-strip-preset">
+                    <span className="core-strip-preset-label">PRESET</span>
+                    <select
+                      className="core-strip-select"
+                      value={presetId}
+                      disabled={!audioReady}
+                      onChange={(e) => onLayerPresetChange?.(id, e.target.value || "")}
+                      title="Select which master preset this layer's wave/instrument is sourced from"
+                    >
+                      <option value="">{defaultLabel}</option>
+                      {corePresetOptions.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.label || p.id}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
                   <span className="core-strip-percent">{percent}%</span>
                 </div>
               </div>
@@ -196,20 +223,15 @@ export function CoreMixer({
                     if (audioReady) scheduleFlush(id, pct);
                   }}
                   onMouseUp={() => {
-                    // Commit final value on release (helps stability)
                     const pct = uiPercentByLayer?.[id] ?? percent;
-                    if (audioReady) {
-                      if (typeof onLayerGainChange === "function") {
-                        onLayerGainChange(id, percentToNormalized(pct));
-                      }
+                    if (audioReady && typeof onLayerGainChange === "function") {
+                      onLayerGainChange(id, percentToNormalized(pct));
                     }
                   }}
                   onTouchEnd={() => {
                     const pct = uiPercentByLayer?.[id] ?? percent;
-                    if (audioReady) {
-                      if (typeof onLayerGainChange === "function") {
-                        onLayerGainChange(id, percentToNormalized(pct));
-                      }
+                    if (audioReady && typeof onLayerGainChange === "function") {
+                      onLayerGainChange(id, percentToNormalized(pct));
                     }
                   }}
                 />
