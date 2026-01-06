@@ -57,12 +57,31 @@ export function TempoKnob({
     startRef.current = { y: e.clientY, v: value };
   };
 
-  // ✅ Removed preventDefault to avoid passive wheel warning
   const onWheel = (e) => {
     if (disabled) return;
     const dir = e.deltaY > 0 ? -1 : 1;
     const next = clamp(value + dir * step, min, max);
     onChange?.(next);
+  };
+
+  const onKeyDown = (e) => {
+    if (disabled) return;
+    if (e.key === "ArrowUp" || e.key === "ArrowRight") {
+      e.preventDefault();
+      onChange?.(clamp(value + step, min, max));
+    }
+    if (e.key === "ArrowDown" || e.key === "ArrowLeft") {
+      e.preventDefault();
+      onChange?.(clamp(value - step, min, max));
+    }
+    if (e.key === "Home") {
+      e.preventDefault();
+      onChange?.(min);
+    }
+    if (e.key === "End") {
+      e.preventDefault();
+      onChange?.(max);
+    }
   };
 
   return (
@@ -77,7 +96,9 @@ export function TempoKnob({
       }
       onMouseDown={onMouseDown}
       onWheel={onWheel}
+      onKeyDown={onKeyDown}
       role="slider"
+      aria-label="Master tempo"
       aria-valuemin={min}
       aria-valuemax={max}
       aria-valuenow={value}
@@ -92,7 +113,11 @@ export function TempoKnob({
         >
           <span />
         </div>
-        <div className="tempo-knob-readout">{value}</div>
+
+        <div className="tempo-knob-center">
+          <div className="tempo-knob-readout">{value}</div>
+          <div className="tempo-knob-unit">BPM</div>
+        </div>
       </div>
 
       <div className="tempo-knob-minmax">

@@ -1,99 +1,81 @@
 /* src/components/TopBar.css */
 
 /* =========================================================
-   TOPBAR — unified rail + NO spill / bleed
-   + add per-section padding/cushion
+   TOP BAR V2 — compact studio-rack strip
+   - cleaner grid
+   - tighter vertical rhythm
+   - real toggle switch + LED
+   - better mobile stacking
    ========================================================= */
 
-.topbar-shell {
-  position: relative;
+.topbar-v2 {
   width: 100%;
   max-width: 100%;
-  overflow: hidden; /* ✅ prevents anything from bleeding outside */
 }
 
-/* ONE unified rail */
-.topbar-rail {
+.topbar-v2-rail {
   position: relative;
   width: 100%;
   max-width: 100%;
-  border-radius: 22px;
-  padding: 12px 16px; /* ✅ slightly more outer cushion */
+  border-radius: 18px;
+  padding: 10px 12px;
 
   display: grid;
-  grid-template-columns: 1.05fr 1.6fr 2.2fr 0.95fr;
-  gap: 14px;
-  align-items: stretch; /* ✅ let section pads feel even */
+  grid-template-columns: 1.05fr 1.75fr 2.4fr 1.05fr;
+  gap: 10px;
+  align-items: stretch;
 
   background:
-    radial-gradient(circle at 10% 0%, rgba(140, 190, 255, 0.14), transparent 58%),
-    radial-gradient(circle at 90% 120%, rgba(255, 195, 150, 0.12), transparent 60%),
-    linear-gradient(180deg, rgba(10, 12, 20, 0.88), rgba(6, 8, 14, 0.94));
-  border: 1px solid rgba(255, 255, 255, 0.12);
+    linear-gradient(180deg, rgba(18, 20, 30, 0.78), rgba(8, 10, 16, 0.92)),
+    radial-gradient(circle at 12% 0%, rgba(140, 190, 255, 0.10), transparent 55%),
+    radial-gradient(circle at 92% 120%, rgba(255, 210, 170, 0.08), transparent 62%);
+  border: 1px solid rgba(255, 255, 255, 0.10);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.09),
-    inset 0 -18px 34px rgba(0, 0, 0, 0.58),
-    0 18px 54px rgba(0, 0, 0, 0.78);
-
-  overflow: hidden; /* ✅ clamps dropdown glow / inner effects */
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    inset 0 -18px 34px rgba(0, 0, 0, 0.52),
+    0 16px 46px rgba(0, 0, 0, 0.70);
+  overflow: hidden;
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
 }
 
-/* Inner sheen */
-.topbar-rail::before {
+.topbar-v2-rail::before {
   content: "";
   position: absolute;
-  inset: 7px;
-  border-radius: 18px;
+  inset: 6px;
+  border-radius: 14px;
   pointer-events: none;
   background: linear-gradient(
     180deg,
     rgba(255, 255, 255, 0.06),
-    transparent 40%,
-    rgba(0, 0, 0, 0.38) 100%
+    transparent 42%,
+    rgba(0, 0, 0, 0.28) 100%
   );
   opacity: 0.95;
 }
 
-/* =========================================================
-   ✅ SECTION CUSHION (the change you asked for)
-   Each column becomes a padded "cell"
-   ========================================================= */
-
-.topbar-brand,
-.topbar-preset,
-.topbar-output,
-.topbar-power {
+/* Cells */
+.tb2-cell {
   position: relative;
   z-index: 1;
-  min-width: 0; /* ✅ allows ellipsis instead of overflow */
+  min-width: 0;
 
-  padding: 10px 12px;          /* ✅ the cushion */
-  border-radius: 16px;         /* ✅ soft internal rounding */
-  background: rgba(0, 0, 0, 0.08); /* ✅ subtle cell separation */
+  padding: 10px 12px;
+  border-radius: 14px;
+
+  background: rgba(0, 0, 0, 0.10);
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.05),
-    inset 0 -10px 18px rgba(0, 0, 0, 0.28);
+    inset 0 -10px 18px rgba(0, 0, 0, 0.22);
 }
 
-/* Power column: keep right aligned but padded */
-.topbar-power {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  align-items: flex-end;
-  justify-content: center;
-}
-
-/* separator line between columns (adjusted for padding) */
-.topbar-brand::after,
-.topbar-preset::after,
-.topbar-output::after {
+.tb2-brand::after,
+.tb2-preset::after,
+.tb2-clock::after {
   content: "";
   position: absolute;
   top: 10px;
-  right: -7px;
+  right: -6px;
   width: 1px;
   height: calc(100% - 20px);
   background: linear-gradient(
@@ -102,17 +84,13 @@
     rgba(255, 255, 255, 0.08),
     rgba(255, 255, 255, 0.02)
   );
-  opacity: 0.9;
+  opacity: 0.85;
 }
 
-/* =========================================================
-   TYPO / LABELS
-   ========================================================= */
-
-.topbar-eyebrow,
-.topbar-label,
-.topbar-output-label,
-.topbar-mini-label {
+/* Type */
+.tb2-eyebrow,
+.tb2-label,
+.tb2-mini-label {
   font-size: 10px;
   letter-spacing: 0.26em;
   text-transform: uppercase;
@@ -120,13 +98,13 @@
   text-shadow: 0 1px 10px rgba(0, 0, 0, 0.55);
 }
 
-.topbar-eyebrow {
+.tb2-eyebrow {
   margin-bottom: 4px;
 }
 
-.topbar-title {
+.tb2-title {
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 900;
   letter-spacing: 0.20em;
   text-transform: uppercase;
   color: rgba(246, 250, 255, 0.98);
@@ -138,27 +116,123 @@
     0 0 12px rgba(120, 190, 255, 0.10);
 }
 
-/* =========================================================
-   PRESET
-   ========================================================= */
+.tb2-subtitle {
+  margin-top: 3px;
+  font-size: 11px;
+  letter-spacing: 0.10em;
+  color: rgba(165, 185, 220, 0.80);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
-.topbar-label {
+.tb2-status {
+  margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(6, 8, 14, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.60);
+  width: max-content;
+  max-width: 100%;
+}
+
+.tb2-led {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(140, 160, 190, 0.35);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.75);
+}
+.tb2-led.ok {
+  background: rgba(120, 255, 205, 0.95);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.78),
+    0 0 16px rgba(120, 255, 205, 0.22);
+}
+.tb2-led.warn {
+  background: rgba(255, 214, 140, 0.92);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.78),
+    0 0 16px rgba(255, 214, 140, 0.18);
+}
+.tb2-led.off {
+  background: rgba(140, 160, 190, 0.25);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.75);
+}
+
+.tb2-status-text {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(230, 240, 255, 0.92);
+  white-space: nowrap;
+}
+
+/* Heads */
+.tb2-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  min-width: 0;
+}
+
+.tb2-head-row {
   margin-bottom: 6px;
 }
 
-.topbar-select {
+.tb2-pill {
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(246, 250, 255, 0.92);
+
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(6, 8, 14, 0.60);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.60);
+
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 55%;
+}
+
+.tb2-meta {
+  margin-left: auto;
+  display: flex;
+  gap: 12px;
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(230, 240, 255, 0.92);
+  white-space: nowrap;
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.70);
+}
+
+/* Preset select */
+.tb2-select {
   width: 100%;
   height: 32px;
   border-radius: 999px;
   padding: 0 14px;
 
-  background: rgba(6, 8, 14, 0.72);
+  background: rgba(6, 8, 14, 0.70);
   border: 1px solid rgba(255, 255, 255, 0.14);
   color: rgba(248, 252, 255, 0.96);
   outline: none;
 
-  font-size: 13px;
-  font-weight: 800;
+  font-size: 12px;
+  font-weight: 900;
   letter-spacing: 0.06em;
 
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.55);
@@ -167,223 +241,296 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
-.topbar-select:disabled {
+.tb2-select:disabled {
   opacity: 0.5;
 }
 
-.topbar-preset-hint {
-  margin-top: 6px;
+.tb2-hint {
+  margin-top: 8px;
   min-width: 0;
 }
-
-.topbar-hint-1,
-.topbar-hint-2 {
+.tb2-hint-1,
+.tb2-hint-2 {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
-.topbar-hint-1 {
+.tb2-hint-1 {
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 900;
   color: rgba(236, 244, 255, 0.95);
   text-shadow: 0 1px 12px rgba(0, 0, 0, 0.65);
 }
-
-.topbar-hint-2 {
+.tb2-hint-2 {
   margin-top: 2px;
   font-size: 11px;
-  color: rgba(175, 195, 235, 0.88);
-  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.6);
+  color: rgba(175, 195, 235, 0.86);
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.60);
 }
 
-/* =========================================================
-   OUTPUT / CLOCK
-   ========================================================= */
-
-.topbar-output-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 6px;
-}
-
-.topbar-dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 999px;
-  background: rgba(140, 160, 190, 0.35);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.75);
-}
-
-.topbar-dot.ok {
-  background: rgba(120, 255, 205, 0.95);
-  box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.78),
-    0 0 16px rgba(120, 255, 205, 0.28);
-}
-
-.topbar-meta {
-  margin-left: auto;
-  display: flex;
-  gap: 12px;
-  font-size: 10px;
-  font-weight: 900;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: rgba(230, 240, 255, 0.92);
-  white-space: nowrap;
-  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.7);
-}
-
-.topbar-output-body {
+/* Clock / knob */
+.tb2-clock-body {
   display: grid;
-  grid-template-columns: 84px 1fr;
+  grid-template-columns: 88px 1fr;
   gap: 12px;
   align-items: center;
   min-width: 0;
 }
 
-.topbar-knob {
+.tb2-knob {
   display: grid;
   place-items: center;
 }
 
-.topbar-controls {
+.tb2-controls {
   min-width: 0;
 }
 
-.topbar-row {
+.tb2-row {
   display: flex;
   gap: 8px;
   align-items: center;
   min-width: 0;
+  flex-wrap: wrap; /* ✅ avoids cramped overflow at narrow widths */
 }
 
-/* chips + selects */
-.topbar-chip {
+.tb2-chip {
   height: 28px;
   padding: 0 12px;
   border-radius: 999px;
+
   border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(6, 8, 14, 0.72);
+  background: rgba(6, 8, 14, 0.70);
   color: rgba(246, 250, 255, 0.94);
 
   font-size: 10px;
-  font-weight: 900;
-  letter-spacing: 0.18em;
+  font-weight: 950;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
 
   cursor: pointer;
   white-space: nowrap;
-
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.55);
 }
 
-.topbar-chip.locked {
-  border-color: rgba(255, 230, 160, 0.24);
+.tb2-chip.locked {
+  border-color: rgba(255, 230, 160, 0.22);
   box-shadow:
     inset 0 0 0 1px rgba(0, 0, 0, 0.55),
-    0 0 14px rgba(255, 220, 140, 0.12);
+    0 0 14px rgba(255, 220, 140, 0.10);
 }
 
-.topbar-chip:disabled {
+.tb2-chip:disabled {
   opacity: 0.5;
   cursor: default;
 }
 
-.topbar-mini-select {
+.tb2-mini-select {
   height: 28px;
   border-radius: 10px;
   padding: 0 10px;
 
-  background: rgba(6, 8, 14, 0.72);
+  background: rgba(6, 8, 14, 0.70);
   border: 1px solid rgba(255, 255, 255, 0.14);
   color: rgba(246, 250, 255, 0.94);
   outline: none;
 
-  min-width: 74px;
+  min-width: 76px;
   font-size: 11px;
-  font-weight: 900;
+  font-weight: 950;
   letter-spacing: 0.10em;
-
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.55);
 }
-
-.topbar-mini-select:disabled {
+.tb2-mini-select:disabled {
   opacity: 0.5;
 }
 
-/* =========================================================
-   POWER
-   ========================================================= */
-
-.topbar-power-btn {
-  height: 36px;
-  width: 100%;
-  padding: 0 16px;
-  border-radius: 999px;
-
-  display: inline-flex;
+.tb2-micro {
+  margin-top: 8px;
+  display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 10px;
+  gap: 8px;
+  min-width: 0;
+}
 
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  background: linear-gradient(180deg, rgba(12, 16, 30, 0.92), rgba(7, 9, 16, 0.96));
-  color: rgba(248, 252, 255, 0.96);
-
-  cursor: pointer;
+.tb2-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(140, 160, 190, 0.30);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.75);
+}
+.tb2-dot.ok {
+  background: rgba(120, 255, 205, 0.92);
   box-shadow:
-    inset 0 0 0 1px rgba(0, 0, 0, 0.62),
-    0 12px 28px rgba(0, 0, 0, 0.55);
-
-  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.65);
+    0 0 0 1px rgba(0, 0, 0, 0.78),
+    0 0 14px rgba(120, 255, 205, 0.20);
 }
 
-.topbar-power-btn.on {
-  border-color: rgba(130, 255, 205, 0.26);
-  box-shadow:
-    inset 0 0 0 1px rgba(0, 0, 0, 0.62),
-    0 0 18px rgba(120, 255, 205, 0.12),
-    0 12px 28px rgba(0, 0, 0, 0.55);
-}
-
-.topbar-power-icon {
-  font-size: 14px;
-  line-height: 1;
-  opacity: 0.95;
-}
-
-.topbar-power-text {
-  font-size: 12px;
-  font-weight: 950;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.topbar-power-hint {
+.tb2-micro-text {
   font-size: 11px;
   letter-spacing: 0.10em;
-  color: rgba(195, 212, 245, 0.88);
-  text-align: right;
+  color: rgba(195, 212, 245, 0.86);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 100%;
-  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.6);
 }
 
-/* =========================================================
-   ENGRAVE
-   ========================================================= */
+/* Power switch */
+.tb2-power {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
 
-.topbar-engrave {
+.tb2-switch {
+  width: 100%;
+  height: 44px;
+  border-radius: 14px;
+
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 10px;
+
+  padding: 8px 10px;
+
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background:
+    linear-gradient(180deg, rgba(12, 14, 22, 0.92), rgba(6, 8, 14, 0.95));
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.62),
+    inset 0 -16px 22px rgba(0, 0, 0, 0.45),
+    0 12px 24px rgba(0, 0, 0, 0.50);
+
+  cursor: pointer;
+  user-select: none;
+}
+
+.tb2-switch:active {
+  transform: translateY(0.5px);
+}
+
+.tb2-switch-track {
+  position: relative;
+  height: 28px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.65),
+    inset 0 10px 18px rgba(255, 255, 255, 0.03);
+}
+
+.tb2-switch-screw {
+  position: absolute;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  transform: translateY(-50%);
+  background: radial-gradient(circle at 35% 30%, rgba(255,255,255,0.16), rgba(0,0,0,0.75));
+  border: 1px solid rgba(255,255,255,0.10);
+  opacity: 0.45;
+}
+.tb2-switch-screw.left { left: 8px; }
+.tb2-switch-screw.right { right: 8px; }
+
+.tb2-switch-knob {
+  position: absolute;
+  top: 50%;
+  left: 6px;
+  width: 34px;
+  height: 20px;
+  border-radius: 999px;
+  transform: translateY(-50%);
+  background:
+    radial-gradient(circle at 35% 25%, rgba(255,255,255,0.18), transparent 55%),
+    linear-gradient(180deg, rgba(70, 74, 92, 0.90), rgba(18, 20, 30, 0.95));
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow:
+    inset 0 0 0 1px rgba(0,0,0,0.55),
+    0 10px 18px rgba(0,0,0,0.45);
+  transition: left 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+
+.tb2-switch.on .tb2-switch-knob {
+  left: calc(100% - 40px);
+  border-color: rgba(120, 255, 205, 0.22);
+  box-shadow:
+    inset 0 0 0 1px rgba(0,0,0,0.55),
+    0 10px 18px rgba(0,0,0,0.45),
+    0 0 18px rgba(120, 255, 205, 0.10);
+}
+
+.tb2-switch-text {
+  display: grid;
+  gap: 2px;
+  justify-items: start;
+  min-width: 0;
+  padding-left: 2px;
+}
+
+.tb2-switch-state {
+  font-size: 12px;
+  font-weight: 950;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(246, 250, 255, 0.95);
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.65);
+}
+
+.tb2-switch-sub {
+  font-size: 11px;
+  letter-spacing: 0.10em;
+  color: rgba(185, 205, 240, 0.80);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tb2-power-led-wrap {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+}
+
+.tb2-power-led {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(140, 160, 190, 0.28);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.78);
+}
+.tb2-power-led.warn {
+  background: rgba(255, 214, 140, 0.92);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.78),
+    0 0 16px rgba(255, 214, 140, 0.16);
+}
+.tb2-power-led.ok {
+  background: rgba(120, 255, 205, 0.95);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.78),
+    0 0 18px rgba(120, 255, 205, 0.22);
+}
+
+.tb2-power-hint {
+  font-size: 11px;
+  letter-spacing: 0.10em;
+  color: rgba(195, 212, 245, 0.86);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Engrave */
+.tb2-engrave {
   margin-top: 8px;
   font-size: 11px;
   letter-spacing: 0.10em;
-  color: rgba(185, 205, 240, 0.78);
+  color: rgba(185, 205, 240, 0.76);
   text-align: center;
   text-shadow: 0 1px 10px rgba(0, 0, 0, 0.65);
   max-width: 100%;
@@ -392,45 +539,81 @@
   white-space: nowrap;
 }
 
-.topbar-engrave strong {
+.tb2-engrave strong {
   color: rgba(238, 246, 255, 0.92);
   font-weight: 950;
 }
 
 /* =========================================================
-   RESPONSIVE
+   RESPONSIVE — mobile polish
    ========================================================= */
 
-@media (max-width: 1200px) {
-  .topbar-rail {
-    grid-template-columns: 1.05fr 1.7fr 2.0fr 0.95fr;
-  }
-}
-
-@media (max-width: 980px) {
-  .topbar-rail {
+@media (max-width: 1100px) {
+  .topbar-v2-rail {
     grid-template-columns: 1fr;
     gap: 10px;
-    align-items: stretch;
   }
 
-  .topbar-brand::after,
-  .topbar-preset::after,
-  .topbar-output::after {
+  .tb2-brand::after,
+  .tb2-preset::after,
+  .tb2-clock::after {
     display: none;
   }
 
-  .topbar-power {
-    align-items: stretch;
+  .tb2-meta {
+    display: none;
   }
 
-  .topbar-power-hint {
-    text-align: center;
+  .tb2-pill {
+    max-width: 50%;
+  }
+
+  .tb2-clock-body {
+    grid-template-columns: 92px 1fr;
   }
 }
 
 @media (max-width: 560px) {
-  .topbar-meta {
-    display: none;
+  .topbar-v2-rail {
+    border-radius: 16px;
+    padding: 10px;
+  }
+
+  .tb2-cell {
+    padding: 10px 10px;
+    border-radius: 14px;
+  }
+
+  .tb2-title {
+    font-size: 12px;
+    letter-spacing: 0.18em;
+  }
+
+  .tb2-select {
+    height: 34px;
+    font-size: 12px;
+  }
+
+  .tb2-clock-body {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .tb2-knob {
+    justify-items: start;
+  }
+
+  .tb2-row {
+    gap: 8px;
+  }
+
+  .tb2-switch {
+    height: 46px;
+  }
+
+  .tb2-engrave {
+    white-space: normal;
+    line-height: 1.35;
+    padding: 0 6px;
   }
 }
