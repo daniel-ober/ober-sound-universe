@@ -23,6 +23,18 @@ function clamp(v, min, max) {
   return Math.max(min, Math.min(max, n));
 }
 
+/**
+ * ✅ Accept either 0–1 or 0–100 inputs.
+ * - If value > 1.001, assume it's a percent (0–100) and divide by 100.
+ * This prevents “silent but loaded” sampler layers caused by 0.9 being treated as 0.9%.
+ */
+function normalizeGainLike(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return 0;
+  const scaled = n > 1.001 ? n / 100 : n;
+  return clamp01(scaled);
+}
+
 function parseTimeSig(sig) {
   if (typeof sig !== "string") return { steps: 4, denom: 4 };
   const [a, b] = sig.split("/");
@@ -36,11 +48,64 @@ function safeTimeSigString(sig) {
   return `${steps}/${denom}`;
 }
 
-function midiOf(note) {
+function toMidiSafe(note) {
   try {
-    return Tone.Frequency(note).toMidi();
+    const m = Tone.Frequency(note).toMidi();
+    return Number.isFinite(m) ? m : null;
   } catch {
     return null;
+  }
+}
+
+/**
+ * ✅ Prevent “freeze” caused by automation backlog while dragging sliders.
+ * Cancel queued automation before applying the next change.
+ *
+ * Also: make sure value is finite and not wildly out of range.
+ */
+function smoothParam(param, value, rampSeconds = 0.03) {
+  if (!param) return;
+
+  const now = Tone.now();
+  const v = Number(value);
+  if (!Number.isFinite(v)) return;
+
+  // Try to cancel queued automation first (prevents backlog)
+  try {
+    if (typeof param.cancelAndHoldAtTime === "function") {
+      param.cancelAndHoldAtTime(now);
+    } else if (typeof param.cancelScheduledValues === "function") {
+      param.cancelScheduledValues(now);
+    }
+  } catch {
+    // ignore
+  }
+
+  // Prefer rampTo if available (Tone.Param / Signal)
+  try {
+    if (typeof param.rampTo === "function") {
+      param.rampTo(v, rampSeconds);
+      return;
+    }
+  } catch {
+    // fallthrough
+  }
+
+  // AudioParam style
+  try {
+    if (typeof param.setValueAtTime === "function") {
+      param.setValueAtTime(v, now);
+      return;
+    }
+  } catch {
+    // ignore
+  }
+
+  // Last resort
+  try {
+    param.value = v;
+  } catch {
+    // ignore
   }
 }
 
@@ -74,14 +139,19 @@ class OMSEEngine {
 
     this.activeNotes = {
       core: new Set(),
-      orbitA: new Set(),
-      orbitB: new Set(),
-      orbitC: new Set(),
+      orbitA: new Map(),
+      orbitB: new Map(),
+      orbitC: new Map(),
     };
 
-    // ✅ Ground monophonic tracking
-    this._groundHeld = new Set(); // all currently held notes
-    this._groundActive = null; // currently sounding note
+    this._coreGroundHeld = new Set();
+    this._coreGroundCurrent = null;
+
+    this._coreLoopRunning = {
+      atmosphere: false,
+      ground: false,
+      harmony: false,
+    };
 
     this.orbitConfig = {
       orbitA: { enabled: true, voicePresetId: null },
@@ -132,112 +202,96 @@ class OMSEEngine {
   }
 
   // ---------------------------
-  // ✅ CORE note helpers
+  // CORE note helpers
   // ---------------------------
+  _coreAttackLayer(layerId, layer, note, velocity = 0.9) {
+    if (!layer?.synth) return;
+    if (layer.muted) return;
 
-  _canSoundLayer(layer) {
-    if (!layer?.synth) return false;
-    if (layer.muted) return false;
-    if ((layer.gain?.gain?.value ?? 1) <= 0.0001) return false;
-    return true;
-  }
+    // IMPORTANT: gain can be 0 if user mutes or if UI accidentally sent 0–100 vs 0–1
+    if ((layer.gain?.gain?.value ?? 1) <= 0.0001) return;
 
-  _coreAttackLayer(layer, note, velocity = 0.9) {
-    if (!this._canSoundLayer(layer)) return;
+    const t = layer.synthType || "poly";
+
+    if (t === "loop") {
+      try {
+        if (!this._coreLoopRunning[layerId]) {
+          if (layer.synth.state !== "started") layer.synth.start();
+          this._coreLoopRunning[layerId] = true;
+        }
+      } catch {
+        // ignore
+      }
+      return;
+    }
 
     try {
-      if (layer.synthType === "sampler") {
-        // ✅ Infinite sustain while held:
-        // triggerAttack on down, triggerRelease on up
-        layer.synth.triggerAttack(note, undefined, velocity);
-      } else {
-        layer.synth.triggerAttack(note, undefined, velocity);
-      }
+      layer.synth.triggerAttack(note, undefined, velocity);
     } catch {
       // ignore
     }
   }
 
-  _coreReleaseLayer(layer, note) {
+  _coreReleaseLayer(layerId, layer, note) {
     if (!layer?.synth) return;
 
-    try {
-      if (layer.synthType === "sampler") {
+    const t = layer.synthType || "poly";
+
+    if (t === "loop") return;
+
+    if (t === "sampler") {
+      try {
         layer.synth.triggerRelease(note);
-        return;
-      }
+      } catch {}
+      return;
+    }
 
-      const t = layer.synthType || "poly";
-
-      if (t === "mono") {
+    if (t === "mono") {
+      try {
         layer.synth.triggerRelease();
-        return;
-      }
+      } catch {}
+      return;
+    }
 
+    try {
       layer.synth.triggerRelease(note);
     } catch {
       try {
         layer.synth.releaseAll?.();
-      } catch {
-        // ignore
-      }
+      } catch {}
     }
   }
 
-  _coreReleaseAllHeldNotesOnLayer(layer) {
+  _coreStopLoopLayerIfRunning(layerId) {
+    const layer = this.core?.layers?.[layerId];
+    if (!layer?.synth) return;
+    if (layer.synthType !== "loop") return;
+
+    if (!this._coreLoopRunning[layerId]) return;
+
+    try {
+      layer.synth.stop();
+    } catch {}
+
+    this._coreLoopRunning[layerId] = false;
+  }
+
+  _coreReleaseAllHeldNotesOnLayer(layerId, layer) {
     if (!layer?.synth) return;
 
+    if ((layer.synthType || "poly") === "loop") {
+      this._coreStopLoopLayerIfRunning(layerId);
+      return;
+    }
+
     const held = Array.from(this.activeNotes.core || []);
-    held.forEach((note) => this._coreReleaseLayer(layer, note));
+    held.forEach((note) => this._coreReleaseLayer(layerId, layer, note));
 
     try {
       layer.synth.releaseAll?.();
     } catch {
       // ignore
     }
-  }
-
-  _pickLowestHeldNote() {
-    let best = null;
-    let bestMidi = Infinity;
-
-    for (const n of this._groundHeld) {
-      const m = midiOf(n);
-      if (m == null) continue;
-      if (m < bestMidi) {
-        bestMidi = m;
-        best = n;
-      }
-    }
-
-    return best;
-  }
-
-  _groundMonoUpdate(velocity = 0.9) {
-    const ground = this.core?.layers?.ground;
-    if (!ground || !ground.synth) return;
-
-    const nextLowest = this._pickLowestHeldNote();
-
-    // If nothing held, release active note (if any)
-    if (!nextLowest) {
-      if (this._groundActive) {
-        this._coreReleaseLayer(ground, this._groundActive);
-        this._groundActive = null;
-      }
-      return;
-    }
-
-    // If lowest unchanged, do nothing
-    if (this._groundActive === nextLowest) return;
-
-    // Switch: release old, attack new
-    if (this._groundActive) {
-      this._coreReleaseLayer(ground, this._groundActive);
-    }
-
-    this._groundActive = nextLowest;
-    this._coreAttackLayer(ground, nextLowest, velocity);
   }
 
   async _applyPendingCorePresets() {
@@ -259,52 +313,63 @@ class OMSEEngine {
     const existing = this.core.layers[layerId];
 
     const preserved = {
-      baseGain: existing.baseGain ?? 0.8,
+      // ✅ normalize here as well in case something stored 0–100 previously
+      baseGain: normalizeGainLike(existing.baseGain ?? 0.8),
       muted: !!existing.muted,
+      pan: existing.pan ?? 0,
     };
 
     try {
-      this._coreReleaseAllHeldNotesOnLayer(existing);
-    } catch {
-      // ignore
-    }
+      this._coreReleaseAllHeldNotesOnLayer(layerId, existing);
+      if (layerId === "ground" && this._coreGroundCurrent) {
+        this._coreReleaseLayer(layerId, existing, this._coreGroundCurrent);
+      }
+    } catch {}
 
-    // reset mono ground state when swapping ground
-    if (layerId === "ground") {
-      this._groundHeld.clear();
-      this._groundActive = null;
-    }
+    try {
+      this._coreStopLoopLayerIfRunning(layerId);
+    } catch {}
 
     try {
       existing?._disposeBuilt?.();
-    } catch {
-      // ignore
-    }
+    } catch {}
+
+    try {
+      existing?.outputPanner?.disconnect?.();
+      existing?.outputPanner?.dispose?.();
+    } catch {}
+
     try {
       existing?.gain?.disconnect?.();
       existing?.gain?.dispose?.();
-    } catch {
-      // ignore
-    }
+    } catch {}
+
     try {
       existing?.meter?.dispose?.();
-    } catch {
-      // ignore
-    }
+    } catch {}
 
-    const next = this._buildCoreLayerFromPreset(preset, preserved.baseGain);
+    const next = this._buildCoreLayerFromPreset(
+      preset,
+      preserved.baseGain,
+      preserved.pan
+    );
 
     next.muted = preserved.muted;
     next.baseGain = preserved.baseGain;
-    next.gain.gain.value = next.muted ? 0 : next.baseGain;
+    next.pan = preserved.pan;
+
+    // Apply preserved gain/mute state
+    smoothParam(next.gain?.gain, next.muted ? 0 : next.baseGain, 0.01);
 
     this.core.layers[layerId] = next;
+
+    this._coreLoopRunning[layerId] = false;
 
     if (next.ready && typeof next.ready.then === "function") {
       try {
         await next.ready;
       } catch (e) {
-        console.warn(`[OMSE] sampler load failed for core layer "${layerId}"`, e);
+        console.warn(`[OMSE] asset load failed for core layer "${layerId}"`, e);
       }
     }
 
@@ -315,6 +380,77 @@ class OMSEEngine {
     }
   }
 
+  // ---------------------------
+  // MIX CONTROLS (NO REBUILD)
+  // ---------------------------
+  setCoreLayerGain(layerId, normalizedOrPercent) {
+    const layer = this.core.layers[layerId];
+    if (!layer) return;
+
+    const v = normalizeGainLike(normalizedOrPercent);
+    layer.baseGain = v;
+
+    const target = layer.muted ? 0 : v;
+    smoothParam(layer.gain?.gain, target, 0.03);
+  }
+
+  setCoreLayerMute(layerId, muted) {
+    const layer = this.core.layers[layerId];
+    if (!layer) return;
+    layer.muted = !!muted;
+
+    const target = layer.muted ? 0 : normalizeGainLike(layer.baseGain);
+    smoothParam(layer.gain?.gain, target, 0.03);
+  }
+
+  setCoreLayerPan(layerId, pan) {
+    const layer = this.core.layers[layerId];
+    if (!layer?.outputPanner?.pan) return;
+
+    const v = clamp(pan, -1, 1);
+    layer.pan = v;
+
+    smoothParam(layer.outputPanner.pan, v, 0.03);
+  }
+
+  setOrbitGain(orbitId, normalizedOrPercent) {
+    const orbit = this.orbits[orbitId];
+    if (!orbit) return;
+
+    const v = normalizeGainLike(normalizedOrPercent);
+    orbit.baseGain = v;
+
+    const enabled = !!this.orbitConfig?.[orbitId]?.enabled;
+    const target = !enabled ? 0 : orbit.muted ? 0 : v;
+
+    smoothParam(orbit.gain?.gain, target, 0.03);
+  }
+
+  setOrbitMute(orbitId, muted) {
+    const orbit = this.orbits[orbitId];
+    if (!orbit) return;
+    orbit.muted = !!muted;
+
+    const enabled = !!this.orbitConfig?.[orbitId]?.enabled;
+    const base = normalizeGainLike(orbit.baseGain);
+    const target = !enabled ? 0 : orbit.muted ? 0 : base;
+
+    smoothParam(orbit.gain?.gain, target, 0.03);
+  }
+
+  setOrbitPan(orbitId, pan) {
+    const orbit = this.orbits[orbitId];
+    if (!orbit?.panner?.pan) return;
+
+    const v = clamp(pan, -1, 1);
+    orbit.pan = v;
+
+    smoothParam(orbit.panner.pan, v, 0.03);
+  }
+
+  // ---------------------------
+  // TRANSPORT
+  // ---------------------------
   setMasterBpm(bpm) {
     const v = clamp(parseFloat(bpm) || 90, 20, 300);
     this.master.bpm = v;
@@ -351,22 +487,62 @@ class OMSEEngine {
     this.setMasterTimeSig("4/4");
   }
 
+  // ---------------------------
+  // CORE GROUND: LOWEST NOTE ONLY
+  // ---------------------------
+  _corePickLowestHeldNote() {
+    const notes = Array.from(this._coreGroundHeld);
+    if (!notes.length) return null;
+
+    let best = notes[0];
+    let bestM = toMidiSafe(best);
+
+    for (let i = 1; i < notes.length; i++) {
+      const n = notes[i];
+      const m = toMidiSafe(n);
+      if (m == null) continue;
+      if (bestM == null || m < bestM) {
+        best = n;
+        bestM = m;
+      }
+    }
+    return best;
+  }
+
+  _coreUpdateGroundMono(velocity = 0.9) {
+    const ground = this.core.layers.ground;
+    if (!ground?.synth) return;
+
+    const next = this._corePickLowestHeldNote();
+    const curr = this._coreGroundCurrent;
+
+    if (next === curr) return;
+
+    if (curr) this._coreReleaseLayer("ground", ground, curr);
+
+    this._coreGroundCurrent = next;
+
+    if (next) this._coreAttackLayer("ground", ground, next, velocity);
+  }
+
+  // ---------------------------
+  // NOTE ON/OFF
+  // ---------------------------
   noteOn(voiceId, note, velocity = 0.9) {
     if (!this.initialized) return;
 
     if (voiceId === "core") {
-      // Harmony + Atmosphere: normal poly behavior (sustain while held)
+      this.activeNotes.core.add(note);
+
+      this._coreGroundHeld.add(note);
+      this._coreUpdateGroundMono(velocity);
+
       const harmony = this.core.layers.harmony;
       const atmos = this.core.layers.atmosphere;
 
-      this._coreAttackLayer(harmony, note, velocity);
-      this._coreAttackLayer(atmos, note, velocity);
+      this._coreAttackLayer("harmony", harmony, note, velocity);
+      this._coreAttackLayer("atmosphere", atmos, note, velocity);
 
-      // Ground: mono lowest-note only (sustain while held)
-      this._groundHeld.add(note);
-      this._groundMonoUpdate(velocity);
-
-      this.activeNotes.core.add(note);
       return;
     }
 
@@ -378,9 +554,12 @@ class OMSEEngine {
     if (orbit.muted) return;
     if ((orbit.gain?.gain?.value ?? 0) <= 0.0001) return;
 
-    if (!this.activeNotes[voiceId].has(note)) {
+    const map = this.activeNotes[voiceId];
+    if (!map) return;
+
+    if (!map.has(note)) {
       orbit.synth.triggerAttack(note, undefined, velocity);
-      this.activeNotes[voiceId].add(note);
+      map.set(note, orbit.synth);
     }
   }
 
@@ -390,86 +569,42 @@ class OMSEEngine {
     if (voiceId === "core") {
       if (!this.activeNotes.core.has(note)) return;
 
-      // release harmony/atmos normally
-      const harmony = this.core.layers.harmony;
-      const atmos = this.core.layers.atmosphere;
-
-      this._coreReleaseLayer(harmony, note);
-      this._coreReleaseLayer(atmos, note);
-
-      // ground mono: remove note, switch to next-lowest (or stop)
-      this._groundHeld.delete(note);
-      this._groundMonoUpdate(0.9);
-
       this.activeNotes.core.delete(note);
+
+      this._coreGroundHeld.delete(note);
+      this._coreUpdateGroundMono();
+
+      const harmony = this.core.layers.harmony;
+      this._coreReleaseLayer("harmony", harmony, note);
+
+      if (this.activeNotes.core.size === 0) {
+        this._coreStopLoopLayerIfRunning("atmosphere");
+      }
+
       return;
     }
 
     const orbit = this.orbits[voiceId];
     if (!orbit) return;
-    if (!this.activeNotes[voiceId].has(note)) return;
 
-    orbit.synth.triggerRelease(note);
-    this.activeNotes[voiceId].delete(note);
-  }
+    const map = this.activeNotes[voiceId];
+    if (!map || !map.has(note)) return;
 
-  setCoreLayerGain(layerId, normalized) {
-    const layer = this.core.layers[layerId];
-    if (!layer) return;
-    const v = clamp01(normalized);
-    layer.baseGain = v;
-    layer.gain.gain.value = layer.muted ? 0 : v;
-  }
+    const ownerSynth = map.get(note);
+    map.delete(note);
 
-  setCoreLayerMute(layerId, muted) {
-    const layer = this.core.layers[layerId];
-    if (!layer) return;
-    layer.muted = !!muted;
-    layer.gain.gain.value = layer.muted ? 0 : layer.baseGain;
-
-    // if ground is muted, stop any currently sustaining mono note
-    if (layerId === "ground" && layer.muted) {
-      if (this._groundActive) {
-        this._coreReleaseLayer(layer, this._groundActive);
-        this._groundActive = null;
-      }
+    try {
+      ownerSynth?.triggerRelease?.(note);
+    } catch {
+      try {
+        orbit.synth.triggerRelease(note);
+      } catch {}
     }
   }
 
-  setOrbitGain(orbitId, normalized) {
-    const orbit = this.orbits[orbitId];
-    if (!orbit) return;
-    const v = clamp01(normalized);
-    orbit.baseGain = v;
-
-    const enabled = !!this.orbitConfig?.[orbitId]?.enabled;
-    const target = !enabled ? 0 : orbit.muted ? 0 : v;
-
-    if (orbit.gain?.gain?.rampTo) orbit.gain.gain.rampTo(target, 0.03);
-    else orbit.gain.gain.value = target;
-  }
-
-  setOrbitMute(orbitId, muted) {
-    const orbit = this.orbits[orbitId];
-    if (!orbit) return;
-    orbit.muted = !!muted;
-
-    const enabled = !!this.orbitConfig?.[orbitId]?.enabled;
-    const target = !enabled ? 0 : orbit.muted ? 0 : orbit.baseGain;
-
-    if (orbit.gain?.gain?.rampTo) orbit.gain.gain.rampTo(target, 0.03);
-    else orbit.gain.gain.value = target;
-  }
-
-  setOrbitPan(orbitId, pan) {
-    const orbit = this.orbits[orbitId];
-    if (!orbit?.panner?.pan) return;
-
-    const v = clamp(pan, -1, 1);
-    if (orbit.panner.pan.rampTo) orbit.panner.pan.rampTo(v, 0.03);
-    else orbit.panner.pan.value = v;
-  }
-
+  // ---------------------------
+  // ORBIT CONFIG + PRESET SWAP
+  // ---------------------------
   setOrbitEnabled(orbitId, enabled) {
     this.orbitConfig[orbitId] = {
       ...(this.orbitConfig[orbitId] || {}),
@@ -479,10 +614,9 @@ class OMSEEngine {
     const orbit = this.orbits[orbitId];
     if (!orbit) return;
 
-    const target = !enabled ? 0 : orbit.muted ? 0 : orbit.baseGain;
-
-    if (orbit.gain?.gain?.rampTo) orbit.gain.gain.rampTo(target, 0.03);
-    else orbit.gain.gain.value = target;
+    const base = normalizeGainLike(orbit.baseGain);
+    const target = !enabled ? 0 : orbit.muted ? 0 : base;
+    smoothParam(orbit.gain?.gain, target, 0.03);
 
     this._ensureOrbitLoopsRunning();
   }
@@ -526,8 +660,15 @@ class OMSEEngine {
     if (!orbit) return;
 
     try {
-      this.activeNotes[orbitId]?.forEach((n) => orbit.synth.triggerRelease(n));
-      this.activeNotes[orbitId]?.clear?.();
+      const map = this.activeNotes?.[orbitId];
+      if (map && map.size) {
+        for (const [note, ownerSynth] of map.entries()) {
+          try {
+            ownerSynth?.triggerRelease?.(note);
+          } catch {}
+        }
+        map.clear();
+      }
 
       orbit.synth?.disconnect?.();
       orbit.synth?.dispose?.();
@@ -559,6 +700,9 @@ class OMSEEngine {
     }
   }
 
+  // ---------------------------
+  // METERS / FFT
+  // ---------------------------
   getMasterLevel() {
     if (!this.masterMeter) return 0;
     return clamp01(this.masterMeter.getValue());
@@ -612,9 +756,7 @@ class OMSEEngine {
   }
 
   _refreshAllOrbitIntervals() {
-    ["orbitA", "orbitB", "orbitC"].forEach((id) =>
-      this._refreshOrbitInterval(id)
-    );
+    ["orbitA", "orbitB", "orbitC"].forEach((id) => this._refreshOrbitInterval(id));
   }
 
   _refreshOrbitInterval(orbitId) {
@@ -640,6 +782,9 @@ class OMSEEngine {
     });
   }
 
+  // ---------------------------
+  // GRAPH BUILD
+  // ---------------------------
   _buildGraph() {
     this.masterGain = new Tone.Gain(0.9).toDestination();
 
@@ -666,10 +811,9 @@ class OMSEEngine {
     this.coreMeter = makeMeter();
     this.coreBuss.connect(this.coreMeter);
 
-    // Defaults until swapped by App
-    this.core.layers.ground = this._buildCoreLayerFromPreset(null, 0.9);
-    this.core.layers.harmony = this._buildCoreLayerFromPreset(null, 0.8);
-    this.core.layers.atmosphere = this._buildCoreLayerFromPreset(null, 0.7);
+    this.core.layers.ground = this._buildCoreLayerFromPreset(null, 0.9, 0);
+    this.core.layers.harmony = this._buildCoreLayerFromPreset(null, 0.8, 0);
+    this.core.layers.atmosphere = this._buildCoreLayerFromPreset(null, 0.7, 0);
 
     this.orbits.orbitA = this._buildOrbitVoice({
       type: "square",
@@ -694,7 +838,7 @@ class OMSEEngine {
     this._refreshAllOrbitIntervals();
   }
 
-  _buildCoreLayerFromPreset(preset, baseGain) {
+  _buildCoreLayerFromPreset(preset, baseGain, pan = 0) {
     const safePreset =
       preset ||
       ({
@@ -704,12 +848,7 @@ class OMSEEngine {
           polyType: "synth",
           synth: {
             oscillator: { type: "sine" },
-            envelope: {
-              attack: 0.02,
-              decay: 0.35,
-              sustain: 0.6,
-              release: 1.6,
-            },
+            envelope: { attack: 0.02, decay: 0.35, sustain: 0.6, release: 1.6 },
           },
           filter: { type: "lowpass", frequency: 6000, Q: 0.7 },
           drive: { amount: 0.0 },
@@ -722,24 +861,28 @@ class OMSEEngine {
 
     const built = buildCoreLayerFromPreset(safePreset);
 
-    const gain = new Tone.Gain(baseGain).connect(this.coreBuss);
+    const outputPanner = new Tone.Panner(clamp(pan, -1, 1));
+
+    const g = normalizeGainLike(baseGain);
+    const gain = new Tone.Gain(g).connect(this.coreBuss);
     const meter = makeMeter();
     gain.connect(meter);
 
-    built.output.connect(gain);
+    built.output.connect(outputPanner);
+    outputPanner.connect(gain);
 
-    if (built.reverbSendGain && this.coreReverb)
-      built.reverbSendGain.connect(this.coreReverb);
-    if (built.delaySendGain && this.coreDelay)
-      built.delaySendGain.connect(this.coreDelay);
+    if (built.reverbSendGain && this.coreReverb) built.reverbSendGain.connect(this.coreReverb);
+    if (built.delaySendGain && this.coreDelay) built.delaySendGain.connect(this.coreDelay);
 
     return {
       synth: built.synth,
       synthType: built.synthType || "poly",
+      outputPanner,
+      pan: clamp(pan, -1, 1),
       gain,
       meter,
       muted: false,
-      baseGain,
+      baseGain: g,
       ready: built.ready,
       _disposeBuilt: built.dispose,
     };
@@ -752,7 +895,9 @@ class OMSEEngine {
     });
 
     const panner = new Tone.Panner(typeof pan === "number" ? pan : 0);
-    const gain = new Tone.Gain(baseGain).connect(this.masterGain);
+
+    const g = normalizeGainLike(baseGain);
+    const gain = new Tone.Gain(g).connect(this.masterGain);
 
     const meter = makeMeter();
     gain.connect(meter);
@@ -766,7 +911,8 @@ class OMSEEngine {
       gain,
       meter,
       muted: false,
-      baseGain,
+      baseGain: g,
+      pan: typeof pan === "number" ? pan : 0,
       _filter: null,
     };
   }

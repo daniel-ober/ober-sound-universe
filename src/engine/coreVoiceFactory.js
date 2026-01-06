@@ -7,6 +7,16 @@ function clamp01(v) {
   return Math.max(0, Math.min(1, n));
 }
 
+function isObj(v) {
+  return v && typeof v === "object" && !Array.isArray(v);
+}
+
+function ensureTrailingSlash(s) {
+  if (typeof s !== "string") return "";
+  if (!s) return "";
+  return s.endsWith("/") ? s : `${s}/`;
+}
+
 function makeChorus(cfg) {
   if (!cfg) return null;
   const ch = new Tone.Chorus({
@@ -55,26 +65,66 @@ function connectChain(source, nodes, destination) {
 }
 
 /**
- * Builds a core layer synth graph from a preset.
- * Returns:
- *  {
- *    output,
- *    reverbSendGain?,
- *    delaySendGain?,
- *    dispose(),
- *    synthType,
- *    synth,
- *    ready?        // Promise for async assets (sampler)
- *  }
+ * Resolve core preset shapes.
  */
+function resolveEngineAndParams(preset) {
+  const safePreset = isObj(preset) ? preset : {};
+  const topEngine = (safePreset.engine || "").toString();
+
+  const topParams = isObj(safePreset.params) ? safePreset.params : {};
+
+  const legacySampler = isObj(safePreset.sampler) ? safePreset.sampler : null;
+  const legacyLoop = isObj(safePreset.loop) ? safePreset.loop : null;
+
+  const nestedSampler = isObj(topParams.sampler) ? topParams.sampler : null;
+  const nestedLoop = isObj(topParams.loop) ? topParams.loop : null;
+
+  const hasSampler =
+    (legacySampler && (legacySampler.urls || legacySampler.baseUrl)) ||
+    (nestedSampler && (nestedSampler.urls || nestedSampler.baseUrl)) ||
+    (!!topParams.urls && !!topParams.baseUrl);
+
+  const hasLoop =
+    (legacyLoop && (legacyLoop.url || legacyLoop.loop)) ||
+    (nestedLoop && (nestedLoop.url || nestedLoop.loop)) ||
+    typeof topParams.url === "string";
+
+  let engine = topEngine || "";
+  if (!engine) {
+    if (hasSampler) engine = "sampler";
+    else if (hasLoop) engine = "loop";
+    else engine = "poly";
+  }
+
+  const params = { ...topParams };
+
+  if (engine === "sampler") {
+    const s = legacySampler || nestedSampler || {};
+    if (!params.baseUrl && s.baseUrl) params.baseUrl = s.baseUrl;
+    if (!params.urls && s.urls) params.urls = s.urls;
+
+    if (params.attack == null && s.attack != null) params.attack = s.attack;
+    if (params.release == null && s.release != null) params.release = s.release;
+    if (params.volume == null && s.volume != null) params.volume = s.volume;
+    if (!params.filter && s.filter) params.filter = s.filter;
+  }
+
+  if (engine === "loop") {
+    const l = legacyLoop || nestedLoop || {};
+    if (!params.url && l.url) params.url = l.url;
+    if (params.loop == null && l.loop != null) params.loop = l.loop;
+    if (!params.filter && l.filter) params.filter = l.filter;
+  }
+
+  return { engine, params, loopCfg: legacyLoop || nestedLoop || null };
+}
+
 export function buildCoreLayerFromPreset(preset) {
-  const engine = preset?.engine || "poly";
-  const p = preset?.params || {};
+  const { engine, params: p, loopCfg } = resolveEngineAndParams(preset);
 
   const nodesToDispose = [];
   let ready = null;
 
-  // ----- Shared optional FX -----
   const chorus = makeChorus(p.chorus);
   if (chorus) nodesToDispose.push(chorus);
 
@@ -88,28 +138,104 @@ export function buildCoreLayerFromPreset(preset) {
   const delaySend = new Tone.Gain(clamp01(p.delaySend ?? 0));
   nodesToDispose.push(reverbSend, delaySend);
 
+  // ✅ LOOP engine (Tone.Player)
+  if (engine === "loop") {
+    const lc = isObj(loopCfg) ? loopCfg : {};
+    const url = lc.url || p.url || null;
+    const shouldLoop =
+      typeof lc.loop === "boolean"
+        ? lc.loop
+        : typeof p.loop === "boolean"
+          ? p.loop
+          : true;
+
+    if (!url) {
+      console.warn(
+        "[coreVoiceFactory] LOOP engine requested but no url provided. Preset:",
+        preset
+      );
+    }
+
+    let resolveReady;
+    let rejectReady;
+    const onloadPromise = new Promise((res, rej) => {
+      resolveReady = res;
+      rejectReady = rej;
+    });
+
+    const player = new Tone.Player({
+      url: url || undefined,
+      loop: shouldLoop,
+      autostart: false,
+      onload: () => resolveReady?.(),
+      onerror: (e) => rejectReady?.(e),
+    });
+
+    nodesToDispose.push(player);
+
+    const filter = makeFilter(p.filter || lc.filter, "lowpass");
+    if (filter) nodesToDispose.push(filter);
+
+    const fxChain = [filter, drive, chorus, widener].filter(Boolean);
+
+    const out = new Tone.Gain(1);
+    nodesToDispose.push(out);
+
+    if (fxChain.length) connectChain(player, fxChain, out);
+    else player.connect(out);
+
+    out.connect(reverbSend);
+    out.connect(delaySend);
+
+    ready = Promise.race([
+      onloadPromise,
+      Tone.loaded().catch(() => undefined),
+    ]);
+
+    return {
+      output: out,
+      reverbSendGain: reverbSend,
+      delaySendGain: delaySend,
+      dispose: () => nodesToDispose.forEach((n) => n.dispose?.()),
+      synthType: "loop",
+      synth: player,
+      ready,
+    };
+  }
+
   // ✅ Sampler engine
   if (engine === "sampler") {
-    const baseUrl = p.baseUrl || "/assets/samples/contrabass/";
-    const urls = p.urls || {};
+    const baseUrl = ensureTrailingSlash(typeof p.baseUrl === "string" ? p.baseUrl : "");
+    const urls = isObj(p.urls) ? p.urls : null;
+
+    if (!urls || !Object.keys(urls).length) {
+      console.warn(
+        "[coreVoiceFactory] SAMPLER engine requested but params.urls is missing/empty. Preset:",
+        preset
+      );
+    }
+    if (!baseUrl) {
+      console.warn(
+        "[coreVoiceFactory] SAMPLER engine requested but params.baseUrl is missing. Preset:",
+        preset
+      );
+    }
 
     let resolveReady;
     let rejectReady;
 
-    // Primary ready = Sampler onload
     const onloadPromise = new Promise((res, rej) => {
       resolveReady = res;
       rejectReady = rej;
     });
 
     const sampler = new Tone.Sampler({
-      urls,
-      baseUrl,
+      urls: urls || {},
+      baseUrl: baseUrl || "",
       attack: p.attack ?? 0.01,
       release: p.release ?? 1.6,
       volume: p.volume ?? -6,
       onload: () => resolveReady?.(),
-      // Tone.Sampler supports onerror in recent Tone versions; if not, Tone.loaded() still catches.
       onerror: (e) => rejectReady?.(e),
     });
 
@@ -123,20 +249,15 @@ export function buildCoreLayerFromPreset(preset) {
     const out = new Tone.Gain(1);
     nodesToDispose.push(out);
 
-    // Build chain
     if (fxChain.length) connectChain(sampler, fxChain, out);
     else sampler.connect(out);
 
     out.connect(reverbSend);
     out.connect(delaySend);
 
-    // ✅ Backstop: Tone.loaded() resolves when all ToneAudioBuffers are loaded.
-    // We race onloadPromise with Tone.loaded() so we don't hang if onload doesn't fire in some builds.
     ready = Promise.race([
       onloadPromise,
-      Tone.loaded().catch(() => {
-        // ignore
-      }),
+      Tone.loaded().catch(() => undefined),
     ]);
 
     return {

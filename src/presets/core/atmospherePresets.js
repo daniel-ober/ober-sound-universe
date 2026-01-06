@@ -1,49 +1,80 @@
+// src/presets/core/atmospherePresets.js
+
+const BASE = import.meta.env.BASE_URL || "/";
+
 export const ATMOSPHERE_PRESETS = {
-  coreDawn_atmosphere_sampler: {
-    id: "coreDawn_atmosphere_sampler",
-    label: "Core Dawn — Atmosphere",
-    engine: "sampler",
-    params: {
-      baseUrl: "/assets/samples/Core Dawn/atmosphere/",
-      urls: {
-        C2: "Inst 1.wav",
-        D2: "Inst 1_2.wav",
-        E2: "Inst 1_3.wav",
-        F2: "Inst 1_4.wav",
-        G2: "Inst 1_5.wav",
-        A2: "Inst 1_6.wav",
-        B2: "Inst 1_7.wav",
-        C3: "Inst 1_8.wav",
-      },
-      attack: 1.4,
-      release: 6.0,
-      volume: -14,
-      reverbSend: 0.45,
-      delaySend: 0.1,
+  // -------------------------
+  // ✅ CORE DAWN (Loop)
+  // -------------------------
+  coreDawn_atmosphere_loop: {
+    id: "coreDawn_atmosphere_loop",
+    title: "Core Dawn — Atmosphere (Loop)",
+    engine: "loop",
+    loop: {
+      url: `${BASE}assets/samples/core_dawn/atmosphere/loop.wav`,
+      loop: true,
     },
+    gain: 0.65,
+    pan: 0,
   },
 
-  solarDrift_atmosphere_sampler: {
-    id: "solarDrift_atmosphere_sampler",
-    label: "Solar Drift — Atmosphere",
-    engine: "sampler",
-    params: {
-      baseUrl: "/assets/samples/Solar Drift/atmosphere/",
-      urls: {
-        C2: "Inst 1.wav",
-        D2: "Inst 1_2.wav",
-        E2: "Inst 1_3.wav",
-        F2: "Inst 1_4.wav",
-        G2: "Inst 1_5.wav",
-        A2: "Inst 1_6.wav",
-        B2: "Inst 1_7.wav",
-        C3: "Inst 1_8.wav",
-      },
-      attack: 1.8,
-      release: 7.5,
-      volume: -15,
-      reverbSend: 0.48,
-      delaySend: 0.12,
+  // -------------------------
+  // ✅ SOLAR DRIFT (Loop)
+  // -------------------------
+  solarDrift_atmosphere_loop: {
+    id: "solarDrift_atmosphere_loop",
+    title: "Solar Drift — Atmosphere (Loop)",
+    engine: "loop",
+    loop: {
+      url: `${BASE}assets/samples/solar_drift/atmosphere/loop.wav`,
+      loop: true,
     },
+    gain: 0.6,
+    pan: 0,
+  },
+
+  // -------------------------
+  // ✅ AURORA PULSE (Loop)
+  // -------------------------
+  auroraPulse_atmosphere_loop: {
+    id: "auroraPulse_atmosphere_loop",
+    title: "Aurora Pulse — Atmosphere (Loop)",
+    engine: "loop",
+    loop: {
+      url: `${BASE}assets/samples/aurora_pulse/atmosphere/loop.wav`,
+      loop: true,
+    },
+    gain: 0.62,
+    pan: 0,
+  },
+
+  // -------------------------
+  // ✅ NEBULA ECHO (Loop)
+  // -------------------------
+  nebulaEcho_atmosphere_loop: {
+    id: "nebulaEcho_atmosphere_loop",
+    title: "Nebula Echo — Atmosphere (Loop)",
+    engine: "loop",
+    loop: {
+      url: `${BASE}assets/samples/nebula_echo/atmosphere/loop.wav`,
+      loop: true,
+    },
+    gain: 0.6,
+    pan: 0,
+  },
+
+  // -------------------------
+  // ✅ MIDNIGHT BLOOM (Loop)
+  // -------------------------
+  midnightBloom_atmosphere_loop: {
+    id: "midnightBloom_atmosphere_loop",
+    title: "Midnight Bloom — Atmosphere (Loop)",
+    engine: "loop",
+    loop: {
+      url: `${BASE}assets/samples/midnight_bloom/atmosphere/loop.wav`,
+      loop: true,
+    },
+    gain: 0.58,
+    pan: 0,
   },
 };

@@ -1,4 +1,5 @@
 // src/components/CoreMixer.jsx
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./CoreMixer.css";
 import { CoreLayerMeter } from "./CoreLayerMeter";
 
@@ -26,16 +27,109 @@ const CORE_LAYERS_META = [
   },
 ];
 
+function clamp(n, min, max) {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return min;
+  return Math.max(min, Math.min(max, v));
+}
+
+/**
+ * Your engine expects 0..1 normalized.
+ * Your UI slider is 0..100 percent.
+ *
+ * This helper reads whatever coreLayers stores (some apps store 0..1, others store 0..100)
+ * and converts it into a 0..100 UI percent.
+ */
+function toUiPercent(maybeGain) {
+  const g = Number(maybeGain);
+  if (!Number.isFinite(g)) return 0;
+
+  // If state is already 0..100
+  if (g > 1.01) return clamp(Math.round(g), 0, 100);
+
+  // If state is 0..1
+  return clamp(Math.round(g * 100), 0, 100);
+}
+
+function percentToNormalized(pct) {
+  return clamp(pct, 0, 100) / 100;
+}
+
 export function CoreMixer({
   audioReady,
   coreLayers,
   onLayerGainChange,
   onLayerMuteToggle,
-
   bannerUrl,
   sceneName,
 }) {
   const bannerTitle = (sceneName || "CORE DAWN").toUpperCase();
+
+  /**
+   * Local slider state prevents parent re-render storms while dragging
+   * AND prevents hammering the audio engine with every tiny movement.
+   */
+  const initialPercents = useMemo(() => {
+    const out = {};
+    for (const { id } of CORE_LAYERS_META) {
+      out[id] = toUiPercent(coreLayers?.[id]?.gain);
+    }
+    return out;
+  }, [coreLayers]);
+
+  const [uiPercentByLayer, setUiPercentByLayer] = useState(initialPercents);
+
+  // Keep UI in sync when coreLayers changes externally (preset swaps, etc.)
+  useEffect(() => {
+    setUiPercentByLayer((prev) => {
+      const next = { ...prev };
+      for (const { id } of CORE_LAYERS_META) {
+        next[id] = toUiPercent(coreLayers?.[id]?.gain);
+      }
+      return next;
+    });
+  }, [coreLayers]);
+
+  // Throttle engine calls to 1 per animation frame per layer
+  const rafIdsRef = useRef({}); // layerId -> rafId
+  const pendingRef = useRef({}); // layerId -> latestPercent
+
+  const flushLayer = useCallback(
+    (layerId) => {
+      const pct = pendingRef.current[layerId];
+      delete pendingRef.current[layerId];
+
+      if (typeof onLayerGainChange === "function") {
+        onLayerGainChange(layerId, percentToNormalized(pct));
+      }
+    },
+    [onLayerGainChange]
+  );
+
+  const scheduleFlush = useCallback(
+    (layerId, pct) => {
+      pendingRef.current[layerId] = pct;
+
+      if (rafIdsRef.current[layerId]) return;
+
+      rafIdsRef.current[layerId] = requestAnimationFrame(() => {
+        rafIdsRef.current[layerId] = null;
+        flushLayer(layerId);
+      });
+    },
+    [flushLayer]
+  );
+
+  // Cleanup any pending RAFs on unmount
+  useEffect(() => {
+    return () => {
+      const ids = rafIdsRef.current || {};
+      Object.keys(ids).forEach((k) => {
+        const id = ids[k];
+        if (id) cancelAnimationFrame(id);
+      });
+    };
+  }, []);
 
   return (
     <div className="core-rack">
@@ -63,7 +157,7 @@ export function CoreMixer({
       <div className="core-rack-strips">
         {CORE_LAYERS_META.map(({ id, label, subtitle, themeClass, meterVariant }) => {
           const layerState = coreLayers?.[id] || { gain: 0, muted: false };
-          const percent = Math.round(layerState.gain ?? 0);
+          const percent = uiPercentByLayer?.[id] ?? toUiPercent(layerState.gain);
 
           return (
             <div key={id} className={`core-strip ${themeClass}`}>
@@ -80,13 +174,8 @@ export function CoreMixer({
                 </div>
               </div>
 
-              {/* Polished per-layer output analyzer */}
               <div className="core-strip-meter">
-                <CoreLayerMeter
-                  layerId={id}
-                  audioReady={audioReady}
-                  variant={meterVariant}
-                />
+                <CoreLayerMeter layerId={id} audioReady={audioReady} variant={meterVariant} />
               </div>
 
               <div className="core-strip-controls">
@@ -96,8 +185,33 @@ export function CoreMixer({
                   max={100}
                   value={percent}
                   disabled={!audioReady}
-                  onChange={(e) => onLayerGainChange(id, Number(e.target.value))}
                   className="core-strip-slider"
+                  onChange={(e) => {
+                    const pct = clamp(Number(e.target.value), 0, 100);
+
+                    // UI updates instantly
+                    setUiPercentByLayer((prev) => ({ ...prev, [id]: pct }));
+
+                    // Engine updates are throttled + normalized (0..1)
+                    if (audioReady) scheduleFlush(id, pct);
+                  }}
+                  onMouseUp={() => {
+                    // Commit final value on release (helps stability)
+                    const pct = uiPercentByLayer?.[id] ?? percent;
+                    if (audioReady) {
+                      if (typeof onLayerGainChange === "function") {
+                        onLayerGainChange(id, percentToNormalized(pct));
+                      }
+                    }
+                  }}
+                  onTouchEnd={() => {
+                    const pct = uiPercentByLayer?.[id] ?? percent;
+                    if (audioReady) {
+                      if (typeof onLayerGainChange === "function") {
+                        onLayerGainChange(id, percentToNormalized(pct));
+                      }
+                    }
+                  }}
                 />
 
                 <button

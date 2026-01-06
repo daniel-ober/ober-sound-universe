@@ -4,66 +4,60 @@ import { GROUND_PRESETS } from "./groundPresets";
 import { HARMONY_PRESETS } from "./harmonyPresets";
 import { ATMOSPHERE_PRESETS } from "./atmospherePresets";
 
-/**
- * CORE LAYER PRESETS
- * ------------------
- * A "core layer preset" is simply selecting:
- *  - one ground preset id
- *  - one harmony preset id
- *  - one atmosphere preset id
- *
- * This is the bridge between MASTER PRESETS and the per-layer libraries.
- */
-
 export const CORE_LAYER_PRESETS = {
-  // ✅ Uses your NEW sampler wav sets:
-  // Core Dawn:
-  //  /public/assets/samples/Core Dawn/ground/Inst 1.wav ... Inst 1_8.wav
-  //  /public/assets/samples/Core Dawn/harmonious/Inst 1.wav ... Inst 1_8.wav
-  //  /public/assets/samples/Core Dawn/atmosphere/Inst 1.wav ... Inst 1_8.wav
+  // -------------------------
+  // ✅ CORE DAWN
+  // -------------------------
   coreDawn: {
     id: "coreDawn",
     label: "Core Dawn",
     groundId: "coreDawn_ground_sampler",
     harmonyId: "coreDawn_harmony_sampler",
-    atmosphereId: "coreDawn_atmosphere_sampler",
+    atmosphereId: "coreDawn_atmosphere_loop",
   },
 
-  // ✅ Solar Drift:
-  //  /public/assets/samples/Solar Drift/ground/Inst 1.wav ... Inst 1_8.wav
-  //  /public/assets/samples/Solar Drift/harmonious/Inst 1.wav ... Inst 1_8.wav
-  //  /public/assets/samples/Solar Drift/atmosphere/Inst 1.wav ... Inst 1_8.wav
+  // -------------------------
+  // ✅ SOLAR DRIFT
+  // -------------------------
   solarDrift: {
     id: "solarDrift",
     label: "Solar Drift",
     groundId: "solarDrift_ground_sampler",
     harmonyId: "solarDrift_harmony_sampler",
-    atmosphereId: "solarDrift_atmosphere_sampler",
+    atmosphereId: "solarDrift_atmosphere_loop",
   },
 
-  // Keeping your existing synth-based bundles as-is:
+  // -------------------------
+  // ✅ AURORA PULSE
+  // -------------------------
   auroraPulse: {
     id: "auroraPulse",
     label: "Aurora Pulse",
-    groundId: "ironFloor",
-    harmonyId: "prismSynth",
-    atmosphereId: "shimmerWind",
+    groundId: "auroraPulse_ground_sampler",
+    harmonyId: "auroraPulse_harmony_sampler",
+    atmosphereId: "auroraPulse_atmosphere_loop",
   },
 
+  // -------------------------
+  // ✅ NEBULA ECHO
+  // -------------------------
   nebulaEcho: {
     id: "nebulaEcho",
     label: "Nebula Echo",
-    groundId: "velvetSub",
-    harmonyId: "softPianoBloom",
-    atmosphereId: "highCanopy",
+    groundId: "nebulaEcho_ground_sampler",
+    harmonyId: "nebulaEcho_harmony_sampler",
+    atmosphereId: "nebulaEcho_atmosphere_loop",
   },
 
+  // -------------------------
+  // ✅ MIDNIGHT BLOOM
+  // -------------------------
   midnightBloom: {
     id: "midnightBloom",
     label: "Midnight Bloom",
-    groundId: "duskDrone",
-    harmonyId: "velvetKeys",
-    atmosphereId: "shimmerWind",
+    groundId: "midnightBloom_ground_sampler",
+    harmonyId: "midnightBloom_harmony_sampler",
+    atmosphereId: "midnightBloom_atmosphere_loop",
   },
 };
 

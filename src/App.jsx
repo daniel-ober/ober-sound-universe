@@ -20,18 +20,26 @@ import "./App.css";
 const galaxy0 = MASTER_PRESETS.galaxy0;
 const MASTER_CYCLE_MEASURES = 1;
 
-// Base keyboard row (A-K) in a “home” octave.
-// We’ll transpose this by octaveShift using Z/X.
+// ✅ Keyboard row support: AWSEDFTGYHUJKOL
+// ✅ FIX: Start at C3 so it matches your sampler's C3–B3 sample set.
 const KEY_TO_NOTE_BASE = {
-  a: "C2",
-  s: "D2",
-  d: "E2",
-  f: "F2",
-  g: "G2",
-  h: "A2",
-  j: "B2",
-  k: "C3",
+  a: "C3",
+  w: "C#3",
+  s: "D3",
+  e: "D#3",
+  d: "E3",
+  f: "F3",
+  t: "F#3",
+  g: "G3",
+  y: "G#3",
+  h: "A3",
+  u: "A#3",
+  j: "B3",
+  k: "C4",
+  o: "C#4",
+  l: "D4",
 };
+
 function getOrbitSceneById(id) {
   return ORBIT_MASTER_PRESETS.find((p) => p.id === id) || null;
 }
@@ -49,20 +57,11 @@ function resolveOrbitMotion(motion = {}) {
     motion.timeSig ||
     "4/4";
 
-  const arpPreset = motion.arpPresetId
-    ? ARP_PRESETS?.[motion.arpPresetId]
-    : null;
+  const arpPreset = motion.arpPresetId ? ARP_PRESETS?.[motion.arpPresetId] : null;
 
   let arp = (arpPreset?.mode || motion.arp || "off")?.toString?.() || "off";
 
-  const engineSafe = new Set([
-    "off",
-    "up",
-    "down",
-    "upDown",
-    "downUp",
-    "random",
-  ]);
+  const engineSafe = new Set(["off", "up", "down", "upDown", "downUp", "random"]);
   if (!engineSafe.has(arp)) {
     if (motion.arpPresetId === "drone") arp = "upDown";
     else if (motion.arpPresetId === "pulse") arp = "upDown";
@@ -72,8 +71,7 @@ function resolveOrbitMotion(motion = {}) {
   }
 
   const rate = motion.rate || arpPreset?.defaults?.rate || "8n";
-  const patternOn =
-    typeof motion.patternOn === "boolean" ? motion.patternOn : false;
+  const patternOn = typeof motion.patternOn === "boolean" ? motion.patternOn : false;
 
   return { timeSig, arp, rate, patternOn };
 }
@@ -168,7 +166,6 @@ function clampInt(n, min, max) {
 }
 
 function transposeNoteByOctaves(note, octaves) {
-  // note like "C4", "F#3", "Bb2"
   const m = String(note).match(/^([A-Ga-g])([#b]?)(-?\d+)$/);
   if (!m) return note;
 
@@ -227,8 +224,6 @@ function App() {
     initialOrbitState.orbitPatterns
   );
 
-  // ✅ NEW: octave shifting (Z/X)
-  // 0 = base notes (C4..C5). -1 = down an octave. +1 = up an octave.
   const [octaveShift, setOctaveShift] = useState(0);
   const octaveShiftRef = useRef(0);
   useEffect(() => {
@@ -241,14 +236,16 @@ function App() {
     omseEngine.setCoreLayerMute(layerId, !!layer.muted);
   };
 
-  const applyOrbitToEngine = (orbitId, layer) => {
+  const applyOrbitMixToEngine = (orbitId, layer) => {
     if (!engineLive) return;
-
     omseEngine.setOrbitEnabled(orbitId, layer.enabled !== false);
     omseEngine.setOrbitGain(orbitId, (layer.gain ?? 0) / 100);
     omseEngine.setOrbitMute(orbitId, !!layer.muted);
     omseEngine.setOrbitPan(orbitId, layer.pan ?? 0);
+  };
 
+  const applyOrbitMotionToEngine = (orbitId, layer) => {
+    if (!engineLive) return;
     omseEngine.setOrbitTimeSig(orbitId, layer.timeSig || "4/4");
     omseEngine.setOrbitArp(orbitId, layer.arp || "off");
     omseEngine.setOrbitRate(orbitId, layer.rate || "8n");
@@ -330,7 +327,8 @@ function App() {
     });
 
     Object.entries(orbitLayers || {}).forEach(([orbitId, layer]) => {
-      applyOrbitToEngine(orbitId, layer);
+      applyOrbitMixToEngine(orbitId, layer);
+      applyOrbitMotionToEngine(orbitId, layer);
     });
 
     Object.entries(orbitPatterns || {}).forEach(([orbitId, isOn]) => {
@@ -359,25 +357,21 @@ function App() {
     const handleKeyDown = (e) => {
       if (!engineLive) return;
 
-      // don’t hijack typing in inputs
       const tag = e.target?.tagName?.toLowerCase?.();
       if (tag === "input" || tag === "textarea" || e.target?.isContentEditable)
         return;
 
       const key = e.key.toLowerCase();
 
-      // ✅ octave shift keys
       if (key === "z") {
         if (downKeys.has("z")) return;
         downKeys.add("z");
-
         setOctaveShift((prev) => clampInt(prev - 1, -3, 3));
         return;
       }
       if (key === "x") {
         if (downKeys.has("x")) return;
         downKeys.add("x");
-
         setOctaveShift((prev) => clampInt(prev + 1, -3, 3));
         return;
       }
@@ -403,7 +397,6 @@ function App() {
 
       const key = e.key.toLowerCase();
 
-      // release Z/X “debounce” keys
       if (key === "z" || key === "x") {
         downKeys.delete(key);
         return;
@@ -414,11 +407,6 @@ function App() {
 
       downKeys.delete(key);
 
-      // NOTE: Use the same shift that was active when pressed.
-      // We stored the shifted note in activeCoreNotesRef, so we need to
-      // compute the likely shifted note for *current* shift, BUT if user
-      // changes octave while holding, it could mismatch.
-      // So: attempt current, and if not found, try a small scan.
       const tryNotes = [
         transposeNoteByOctaves(base, octaveShiftRef.current),
         transposeNoteByOctaves(base, octaveShiftRef.current - 1),
@@ -486,8 +474,7 @@ function App() {
 
     if (resolved.atmosphere)
       await omseEngine.setCoreLayerPreset("atmosphere", resolved.atmosphere);
-    else
-      console.warn("[OMSE] Missing atmosphere preset for triplet:", tripletId);
+    else console.warn("[OMSE] Missing atmosphere preset for triplet:", tripletId);
   };
 
   const handleInitIfNeeded = async () => {
@@ -519,11 +506,12 @@ function App() {
       setOrbitPatterns(nextOrbitState.orbitPatterns);
 
       Object.entries(nextOrbitState.orbitLayers).forEach(([orbitId, layer]) => {
-        applyOrbitToEngine(orbitId, layer);
+        applyOrbitMixToEngine(orbitId, layer);
+        applyOrbitMotionToEngine(orbitId, layer);
       });
 
-      Object.entries(nextOrbitState.orbitPatterns || {}).forEach(
-        ([oid, isOn]) => setOrbitPatternStateSafe(oid, !!isOn)
+      Object.entries(nextOrbitState.orbitPatterns || {}).forEach(([oid, isOn]) =>
+        setOrbitPatternStateSafe(oid, !!isOn)
       );
 
       Object.entries(nextOrbitState.orbitLayers).forEach(([orbitId, layer]) => {
@@ -532,10 +520,7 @@ function App() {
             ? ORBIT_VOICE_PRESETS[layer.voicePresetId]
             : null;
 
-        if (
-          voicePreset &&
-          typeof omseEngine.setOrbitVoicePreset === "function"
-        ) {
+        if (voicePreset && typeof omseEngine.setOrbitVoicePreset === "function") {
           omseEngine.setOrbitVoicePreset(orbitId, voicePreset);
         }
       });
@@ -562,8 +547,7 @@ function App() {
     const nextCore = normalizeCore(preset.core);
     setCoreLayers(nextCore);
 
-    const nextSceneId =
-      preset.orbitSceneId || ORBIT_MASTER_PRESETS?.[0]?.id || "";
+    const nextSceneId = preset.orbitSceneId || ORBIT_MASTER_PRESETS?.[0]?.id || "";
     setOrbitSceneId(nextSceneId);
 
     const scene = getOrbitSceneById(nextSceneId);
@@ -582,11 +566,12 @@ function App() {
       });
 
       Object.entries(nextOrbitState.orbitLayers).forEach(([orbitId, layer]) => {
-        applyOrbitToEngine(orbitId, layer);
+        applyOrbitMixToEngine(orbitId, layer);
+        applyOrbitMotionToEngine(orbitId, layer);
       });
 
-      Object.entries(nextOrbitState.orbitPatterns || {}).forEach(
-        ([oid, isOn]) => setOrbitPatternStateSafe(oid, !!isOn)
+      Object.entries(nextOrbitState.orbitPatterns || {}).forEach(([oid, isOn]) =>
+        setOrbitPatternStateSafe(oid, !!isOn)
       );
     }
   };
@@ -601,11 +586,12 @@ function App() {
 
     if (engineLive && scene) {
       Object.entries(nextOrbitState.orbitLayers).forEach(([orbitId, layer]) => {
-        applyOrbitToEngine(orbitId, layer);
+        applyOrbitMixToEngine(orbitId, layer);
+        applyOrbitMotionToEngine(orbitId, layer);
       });
 
-      Object.entries(nextOrbitState.orbitPatterns || {}).forEach(
-        ([oid, isOn]) => setOrbitPatternStateSafe(oid, !!isOn)
+      Object.entries(nextOrbitState.orbitPatterns || {}).forEach(([oid, isOn]) =>
+        setOrbitPatternStateSafe(oid, !!isOn)
       );
 
       Object.entries(nextOrbitState.orbitLayers).forEach(([orbitId, layer]) => {
@@ -614,10 +600,7 @@ function App() {
             ? ORBIT_VOICE_PRESETS[layer.voicePresetId]
             : null;
 
-        if (
-          voicePreset &&
-          typeof omseEngine.setOrbitVoicePreset === "function"
-        ) {
+        if (voicePreset && typeof omseEngine.setOrbitVoicePreset === "function") {
           omseEngine.setOrbitVoicePreset(orbitId, voicePreset);
         }
       });
@@ -658,7 +641,7 @@ function App() {
       const cur = prev[orbitId] || baseOrbitFallback;
       const nextLayer = { ...cur, gain: newPercent };
       const next = { ...prev, [orbitId]: nextLayer };
-      applyOrbitToEngine(orbitId, nextLayer);
+      applyOrbitMixToEngine(orbitId, nextLayer);
       return next;
     });
   };
@@ -668,7 +651,7 @@ function App() {
       const cur = prev[orbitId] || baseOrbitFallback;
       const nextLayer = { ...cur, muted: !cur.muted };
       const next = { ...prev, [orbitId]: nextLayer };
-      applyOrbitToEngine(orbitId, nextLayer);
+      applyOrbitMixToEngine(orbitId, nextLayer);
       return next;
     });
   };
@@ -678,7 +661,7 @@ function App() {
       const cur = prev[orbitId] || baseOrbitFallback;
       const nextLayer = { ...cur, pan: newPan };
       const next = { ...prev, [orbitId]: nextLayer };
-      applyOrbitToEngine(orbitId, nextLayer);
+      applyOrbitMixToEngine(orbitId, nextLayer);
       return next;
     });
   };
@@ -688,7 +671,7 @@ function App() {
       const cur = prev[orbitId] || baseOrbitFallback;
       const nextLayer = { ...cur, timeSig: nextSig };
       const next = { ...prev, [orbitId]: nextLayer };
-      applyOrbitToEngine(orbitId, nextLayer);
+      applyOrbitMotionToEngine(orbitId, nextLayer);
       return next;
     });
   };
@@ -698,7 +681,7 @@ function App() {
       const cur = prev[orbitId] || baseOrbitFallback;
       const nextLayer = { ...cur, arp: nextArp };
       const next = { ...prev, [orbitId]: nextLayer };
-      applyOrbitToEngine(orbitId, nextLayer);
+      applyOrbitMotionToEngine(orbitId, nextLayer);
       return next;
     });
   };
@@ -708,7 +691,7 @@ function App() {
       const cur = prev[orbitId] || baseOrbitFallback;
       const nextLayer = { ...cur, enabled };
       const next = { ...prev, [orbitId]: nextLayer };
-      applyOrbitToEngine(orbitId, nextLayer);
+      applyOrbitMixToEngine(orbitId, nextLayer);
       return next;
     });
   };
@@ -748,9 +731,8 @@ function App() {
                   <div className="gravity-spectrum-header">
                     <span>Galaxy 0 · Output</span>
                     <span style={{ opacity: 0.75, fontSize: 12 }}>
-                      Octave:{" "}
-                      {octaveShift >= 0 ? `+${octaveShift}` : octaveShift} (Z /
-                      X)
+                      Octave: {octaveShift >= 0 ? `+${octaveShift}` : octaveShift}{" "}
+                      (Z / X)
                     </span>
                   </div>
 
@@ -785,9 +767,7 @@ function App() {
               />
             </div>
 
-            <section className="instrument-row-bottom">
-              {/* future row */}
-            </section>
+            <section className="instrument-row-bottom">{/* future row */}</section>
           </div>
         </div>
       </div>
