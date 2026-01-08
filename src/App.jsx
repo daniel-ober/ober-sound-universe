@@ -212,7 +212,7 @@ function App() {
     });
   }, []);
 
-  // ✅ NEW: build the actual voice preset dropdown options from ORBIT_VOICE_PRESETS
+  // ✅ build orbit voice preset dropdown options
   const orbitVoiceOptions = useMemo(() => {
     const src = ORBIT_VOICE_PRESETS || {};
     return Object.keys(src).map((id) => {
@@ -239,16 +239,83 @@ function App() {
     octaveShiftRef.current = octaveShift;
   }, [octaveShift]);
 
+  // ==========================
+  // ✅ CORE PRESET OPTIONS (per-layer)
+  // ==========================
+  const corePresetOptionsByLayer = useMemo(() => {
+    const options = { ground: [], harmony: [], atmosphere: [] };
+
+    const all = galaxy0?.presets || {};
+    const ids = Object.keys(all);
+
+    for (const masterId of ids) {
+      const cfg = all[masterId];
+      const label = cfg?.label || cfg?.name || cfg?.title || masterId;
+
+      const tripletId = cfg?.coreLayerPresetId || null;
+      const triplet = tripletId ? getCorePresetTriplet(tripletId) : null;
+      if (!triplet) continue;
+
+      if (triplet.ground) {
+        options.ground.push({ id: masterId, label, preset: triplet.ground });
+      }
+      if (triplet.harmony) {
+        options.harmony.push({ id: masterId, label, preset: triplet.harmony });
+      }
+      if (triplet.atmosphere) {
+        options.atmosphere.push({
+          id: masterId,
+          label,
+          preset: triplet.atmosphere,
+        });
+      }
+    }
+
+    // keep stable sort by label
+    Object.keys(options).forEach((k) => {
+      options[k].sort((a, b) => String(a.label).localeCompare(String(b.label)));
+    });
+
+    return options;
+  }, []);
+
+  // Which MASTER preset is currently “feeding” each core layer (for the dropdown selection)
+  const [coreLayerSourceMasterId, setCoreLayerSourceMasterId] = useState(() => {
+    // default: current active master preset drives all 3 layers (matches your triplet logic)
+    return {
+      ground: activePreset,
+      harmony: activePreset,
+      atmosphere: activePreset,
+    };
+  });
+
+  // Keep defaults in sync when you apply a new master preset
+  useEffect(() => {
+    setCoreLayerSourceMasterId({
+      ground: activePreset,
+      harmony: activePreset,
+      atmosphere: activePreset,
+    });
+  }, [activePreset]);
+
+  // ==========================
+  // APPLY TO ENGINE (NO REBUILD)
+  // ==========================
   const applyCoreLayerToEngine = (layerId, layer) => {
     if (!engineLive) return;
-    omseEngine.setCoreLayerGain(layerId, (layer.gain ?? 0) / 100);
+
+    // 🔥 IMPORTANT: pass raw (0..1 or 0..100) and let the engine normalize
+    omseEngine.setCoreLayerGain(layerId, layer.gain ?? 0);
     omseEngine.setCoreLayerMute(layerId, !!layer.muted);
   };
 
   const applyOrbitMixToEngine = (orbitId, layer) => {
     if (!engineLive) return;
     omseEngine.setOrbitEnabled(orbitId, layer.enabled !== false);
-    omseEngine.setOrbitGain(orbitId, (layer.gain ?? 0) / 100);
+
+    // pass raw; engine handles 0..1 or 0..100
+    omseEngine.setOrbitGain(orbitId, layer.gain ?? 0);
+
     omseEngine.setOrbitMute(orbitId, !!layer.muted);
     omseEngine.setOrbitPan(orbitId, layer.pan ?? 0);
   };
@@ -260,7 +327,6 @@ function App() {
     omseEngine.setOrbitRate(orbitId, layer.rate || "8n");
   };
 
-  // ✅ NEW: apply voice preset to engine (this is what makes it *actually sound different*)
   const applyOrbitVoiceToEngine = (orbitId, layer) => {
     if (!engineLive) return;
     const presetId = layer?.voicePresetId || null;
@@ -355,7 +421,7 @@ function App() {
     Object.entries(orbitLayers || {}).forEach(([orbitId, layer]) => {
       applyOrbitMixToEngine(orbitId, layer);
       applyOrbitMotionToEngine(orbitId, layer);
-      applyOrbitVoiceToEngine(orbitId, layer); // ✅ make sure voice matches state
+      applyOrbitVoiceToEngine(orbitId, layer);
     });
 
     Object.entries(orbitPatterns || {}).forEach(([orbitId, isOn]) => {
@@ -519,7 +585,7 @@ function App() {
     const core = normalizeCore(activePresetConfig?.core);
     setCoreLayers(core);
     Object.entries(core).forEach(([layerId, layer]) => {
-      omseEngine.setCoreLayerGain(layerId, (layer.gain ?? 0) / 100);
+      omseEngine.setCoreLayerGain(layerId, layer.gain ?? 0);
       omseEngine.setCoreLayerMute(layerId, !!layer.muted);
     });
 
@@ -535,7 +601,7 @@ function App() {
       Object.entries(nextOrbitState.orbitLayers).forEach(([orbitId, layer]) => {
         applyOrbitMixToEngine(orbitId, layer);
         applyOrbitMotionToEngine(orbitId, layer);
-        applyOrbitVoiceToEngine(orbitId, layer); // ✅ voice on init too
+        applyOrbitVoiceToEngine(orbitId, layer);
       });
 
       Object.entries(nextOrbitState.orbitPatterns || {}).forEach(([oid, isOn]) =>
@@ -563,6 +629,13 @@ function App() {
 
     const nextCore = normalizeCore(preset.core);
     setCoreLayers(nextCore);
+
+    // default: new master preset becomes the “source” for all core layers
+    setCoreLayerSourceMasterId({
+      ground: presetId,
+      harmony: presetId,
+      atmosphere: presetId,
+    });
 
     const nextSceneId = preset.orbitSceneId || ORBIT_MASTER_PRESETS?.[0]?.id || "";
     setOrbitSceneId(nextSceneId);
@@ -615,6 +688,7 @@ function App() {
     }
   };
 
+  // ✅ Core mix handlers (values remain 0..100 in state)
   const handleLayerGainChange = (layerId, newPercent) => {
     setCoreLayers((prev) => {
       const nextLayer = { ...(prev[layerId] || {}), gain: newPercent };
@@ -632,6 +706,18 @@ function App() {
       applyCoreLayerToEngine(layerId, nextLayer);
       return next;
     });
+  };
+
+  // ✅ NEW: per-layer core preset swap from dropdown (master preset = label source)
+  const handleCoreLayerPresetChange = async (layerId, masterPresetId) => {
+    const options = corePresetOptionsByLayer?.[layerId] || [];
+    const picked = options.find((o) => o.id === masterPresetId) || null;
+    if (!picked?.preset) return;
+
+    setCoreLayerSourceMasterId((prev) => ({ ...prev, [layerId]: masterPresetId }));
+
+    if (!audioReady) return;
+    await omseEngine.setCoreLayerPreset(layerId, picked.preset);
   };
 
   const baseOrbitFallback = {
@@ -705,16 +791,12 @@ function App() {
     });
   };
 
-  // ✅ NEW: live voice preset swap (this is the missing piece)
   const handleOrbitVoicePresetChange = (orbitId, voicePresetId) => {
     setOrbitLayers((prev) => {
       const cur = prev[orbitId] || baseOrbitFallback;
       const nextLayer = { ...cur, voicePresetId: voicePresetId || null };
       const next = { ...prev, [orbitId]: nextLayer };
-
-      // apply immediately if engine is live
       applyOrbitVoiceToEngine(orbitId, nextLayer);
-
       return next;
     });
   };
@@ -772,13 +854,18 @@ function App() {
               <UniverseLayout
                 audioReady={engineLive}
                 coreLayers={coreLayers}
+                onLayerGainChange={handleLayerGainChange}
+                onLayerMuteToggle={handleLayerMuteToggle}
+                // ✅ NEW: core preset dropdowns
+                corePresetOptionsByLayer={corePresetOptionsByLayer}
+                coreLayerSourceMasterId={coreLayerSourceMasterId}
+                onCoreLayerPresetChange={handleCoreLayerPresetChange}
+                // Orbits
                 orbitLayers={orbitLayers}
                 orbitPatterns={orbitPatterns}
                 orbitSceneId={orbitSceneId}
                 orbitSceneOptions={orbitSceneOptions}
                 onOrbitSceneChange={handleOrbitSceneChange}
-                onLayerGainChange={handleLayerGainChange}
-                onLayerMuteToggle={handleLayerMuteToggle}
                 onOrbitGainChange={handleOrbitGainChange}
                 onOrbitMuteToggle={handleOrbitMuteToggle}
                 onOrbitPatternToggle={handleOrbitPatternToggle}
@@ -786,7 +873,6 @@ function App() {
                 onOrbitTimeSigChange={handleOrbitTimeSigChange}
                 onOrbitArpChange={handleOrbitArpChange}
                 onOrbitEnabledChange={handleOrbitEnabledChange}
-                // ✅ NEW
                 orbitVoiceOptions={orbitVoiceOptions}
                 onOrbitVoicePresetChange={handleOrbitVoicePresetChange}
                 bannerUrl={bannerUrl}

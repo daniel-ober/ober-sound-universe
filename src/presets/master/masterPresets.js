@@ -7,6 +7,10 @@
  * - TopBar currently shows Galaxy0 presets only.
  * - We link a MASTER preset -> a CoreLayer triplet:
  *    preset.coreLayerPresetId -> CORE_LAYER_PRESETS[...]
+ *
+ * NEW (v1+):
+ * - Each MASTER preset can define global musical intent via preset.master:
+ *    { bpm, timeSig, cycleMeasures, sigLocked }
  */
 
 const BANNER_BASE_PATH = "/assets/skins/banners";
@@ -40,6 +44,14 @@ export const MASTER_PRESETS = {
             "A grounded cinematic foundation—solid core weight with restrained harmonic lift.",
         },
 
+        // ✅ NEW: global musical intent
+        master: {
+          bpm: 90,
+          timeSig: "4/4",
+          cycleMeasures: 1,
+          sigLocked: true,
+        },
+
         // ✅ Core Dawn triplet = your WAV assets
         coreLayerPresetId: "coreDawn",
 
@@ -63,6 +75,14 @@ export const MASTER_PRESETS = {
             "Slow orbiting warmth—gentle motion with a wide halo and softened edges.",
         },
 
+        // ✅ NEW: global musical intent
+        master: {
+          bpm: 72,
+          timeSig: "4/4",
+          cycleMeasures: 1,
+          sigLocked: true,
+        },
+
         // ✅ Solar Drift triplet = your WAV assets
         coreLayerPresetId: "solarDrift",
 
@@ -75,7 +95,6 @@ export const MASTER_PRESETS = {
         orbitSceneId: "warm_tides",
       },
 
-      // leave the rest as placeholders (you can re-map later)
       presetC: {
         id: "presetC",
         label: "Aurora Pulse",
@@ -86,6 +105,15 @@ export const MASTER_PRESETS = {
           moodLine:
             "Brighter motion-forward balance—core stays present while atmos shimmers and pushes.",
         },
+
+        // ✅ NEW: global musical intent
+        master: {
+          bpm: 110,
+          timeSig: "4/4",
+          cycleMeasures: 1,
+          sigLocked: true,
+        },
+
         coreLayerPresetId: "auroraPulse",
         core: {
           ground: { gain: 70, muted: false },
@@ -105,6 +133,15 @@ export const MASTER_PRESETS = {
           moodLine:
             "A drifting nebula haze—harmonics bloom outward while the core stays understated.",
         },
+
+        // ✅ NEW: global musical intent
+        master: {
+          bpm: 84,
+          timeSig: "6/8",
+          cycleMeasures: 1,
+          sigLocked: true,
+        },
+
         coreLayerPresetId: "nebulaEcho",
         core: {
           ground: { gain: 50, muted: false },
@@ -124,6 +161,15 @@ export const MASTER_PRESETS = {
           moodLine:
             "Deep and intimate—soft harmonies bloom in the dark with a calm, steady pull.",
         },
+
+        // ✅ NEW: global musical intent
+        master: {
+          bpm: 78,
+          timeSig: "4/4",
+          cycleMeasures: 1,
+          sigLocked: true,
+        },
+
         coreLayerPresetId: "midnightBloom",
         core: {
           ground: { gain: 75, muted: false },

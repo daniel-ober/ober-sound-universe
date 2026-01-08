@@ -33,26 +33,15 @@ function clamp(n, min, max) {
   return Math.max(min, Math.min(max, v));
 }
 
-/**
- * Your engine expects 0..1 normalized.
- * Your UI slider is 0..100 percent.
- *
- * This helper reads whatever coreLayers stores (some apps store 0..1, others store 0..100)
- * and converts it into a 0..100 UI percent.
- */
 function toUiPercent(maybeGain) {
   const g = Number(maybeGain);
   if (!Number.isFinite(g)) return 0;
 
-  // If state is already 0..100
+  // already 0..100
   if (g > 1.01) return clamp(Math.round(g), 0, 100);
 
-  // If state is 0..1
+  // 0..1
   return clamp(Math.round(g * 100), 0, 100);
-}
-
-function percentToNormalized(pct) {
-  return clamp(pct, 0, 100) / 100;
 }
 
 export function CoreMixer({
@@ -61,19 +50,16 @@ export function CoreMixer({
   onLayerGainChange,
   onLayerMuteToggle,
 
-  // ✅ NEW: per-layer preset options
-  corePresetOptions = [], // [{ id, label }]
+  // ✅ NEW
+  corePresetOptionsByLayer = { ground: [], harmony: [], atmosphere: [] },
+  coreLayerSourceMasterId = { ground: "", harmony: "", atmosphere: "" },
   onLayerPresetChange,
 
   bannerUrl,
   sceneName,
 }) {
-  const bannerTitle = (sceneName || "CORE DAWN").toUpperCase();
+  const bannerTitle = (sceneName || "").toUpperCase();
 
-  /**
-   * Local slider state prevents parent re-render storms while dragging
-   * AND prevents hammering the audio engine with every tiny movement.
-   */
   const initialPercents = useMemo(() => {
     const out = {};
     for (const { id } of CORE_LAYERS_META) {
@@ -84,7 +70,6 @@ export function CoreMixer({
 
   const [uiPercentByLayer, setUiPercentByLayer] = useState(initialPercents);
 
-  // Keep UI in sync when coreLayers changes externally (preset swaps, etc.)
   useEffect(() => {
     setUiPercentByLayer((prev) => {
       const next = { ...prev };
@@ -95,9 +80,9 @@ export function CoreMixer({
     });
   }, [coreLayers]);
 
-  // Throttle engine calls to 1 per animation frame per layer
-  const rafIdsRef = useRef({}); // layerId -> rafId
-  const pendingRef = useRef({}); // layerId -> latestPercent
+  // Throttle calls to parent (keeps UI smooth + reduces engine spam)
+  const rafIdsRef = useRef({});
+  const pendingRef = useRef({});
 
   const flushLayer = useCallback(
     (layerId) => {
@@ -105,7 +90,8 @@ export function CoreMixer({
       delete pendingRef.current[layerId];
 
       if (typeof onLayerGainChange === "function") {
-        onLayerGainChange(layerId, percentToNormalized(pct));
+        // ✅ IMPORTANT: App stores 0..100; engine normalizes
+        onLayerGainChange(layerId, pct);
       }
     },
     [onLayerGainChange]
@@ -125,7 +111,6 @@ export function CoreMixer({
     [flushLayer]
   );
 
-  // Cleanup any pending RAFs on unmount
   useEffect(() => {
     return () => {
       const ids = rafIdsRef.current || {};
@@ -135,6 +120,13 @@ export function CoreMixer({
       });
     };
   }, []);
+
+  const getSelectedLabel = (layerId) => {
+    const selectedId = coreLayerSourceMasterId?.[layerId] || "";
+    const opts = corePresetOptionsByLayer?.[layerId] || [];
+    const found = opts.find((o) => o.id === selectedId);
+    return found?.label || (selectedId ? selectedId : "Default");
+  };
 
   return (
     <div className="core-rack">
@@ -164,8 +156,9 @@ export function CoreMixer({
           const layerState = coreLayers?.[id] || { gain: 0, muted: false };
           const percent = uiPercentByLayer?.[id] ?? toUiPercent(layerState.gain);
 
-          const presetId = layerState?.presetId || "";
-          const defaultLabel = `Default (${bannerTitle})`;
+          const presetLabel = getSelectedLabel(id);
+          const presetOptions = corePresetOptionsByLayer?.[id] || [];
+          const selectedMasterId = coreLayerSourceMasterId?.[id] || "";
 
           return (
             <div key={id} className={`core-strip ${themeClass}`}>
@@ -178,24 +171,33 @@ export function CoreMixer({
                 </div>
 
                 <div className="core-strip-meta">
-                  {/* ✅ NEW: preset picker */}
-                  <label className="core-strip-preset">
-                    <span className="core-strip-preset-label">PRESET</span>
+                  <div className="core-strip-preset">
+                    <span className="core-strip-preset-label">Preset</span>
                     <select
-                      className="core-strip-select"
-                      value={presetId}
+                      className="core-strip-preset-select"
                       disabled={!audioReady}
-                      onChange={(e) => onLayerPresetChange?.(id, e.target.value || "")}
-                      title="Select which master preset this layer's wave/instrument is sourced from"
+                      value={selectedMasterId}
+                      onChange={(e) => {
+                        const nextId = e.target.value;
+                        if (typeof onLayerPresetChange === "function") {
+                          onLayerPresetChange(id, nextId);
+                        }
+                      }}
+                      aria-label={`${label} preset`}
                     >
-                      <option value="">{defaultLabel}</option>
-                      {corePresetOptions.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.label || p.id}
+                      {/* always include current value label */}
+                      {!selectedMasterId ? (
+                        <option value="">{presetLabel}</option>
+                      ) : null}
+
+                      {/* options (master preset names) */}
+                      {presetOptions.map((o) => (
+                        <option key={o.id} value={o.id}>
+                          {o.label}
                         </option>
                       ))}
                     </select>
-                  </label>
+                  </div>
 
                   <span className="core-strip-percent">{percent}%</span>
                 </div>
@@ -216,22 +218,20 @@ export function CoreMixer({
                   onChange={(e) => {
                     const pct = clamp(Number(e.target.value), 0, 100);
 
-                    // UI updates instantly
                     setUiPercentByLayer((prev) => ({ ...prev, [id]: pct }));
 
-                    // Engine updates are throttled + normalized (0..1)
                     if (audioReady) scheduleFlush(id, pct);
                   }}
                   onMouseUp={() => {
                     const pct = uiPercentByLayer?.[id] ?? percent;
                     if (audioReady && typeof onLayerGainChange === "function") {
-                      onLayerGainChange(id, percentToNormalized(pct));
+                      onLayerGainChange(id, pct);
                     }
                   }}
                   onTouchEnd={() => {
                     const pct = uiPercentByLayer?.[id] ?? percent;
                     if (audioReady && typeof onLayerGainChange === "function") {
-                      onLayerGainChange(id, percentToNormalized(pct));
+                      onLayerGainChange(id, pct);
                     }
                   }}
                 />

@@ -11,6 +11,11 @@ export function UniverseLayout({
   onLayerGainChange,
   onLayerMuteToggle,
 
+  // ✅ NEW: core preset dropdowns
+  corePresetOptionsByLayer,
+  coreLayerSourceMasterId,
+  onCoreLayerPresetChange,
+
   // Orbits
   orbitLayers,
   orbitPatterns,
@@ -25,7 +30,7 @@ export function UniverseLayout({
   onOrbitArpChange,
   onOrbitEnabledChange,
 
-  // ✅ NEW: voice preset wiring
+  // voice presets
   orbitVoiceOptions,
   onOrbitVoicePresetChange,
 
@@ -40,6 +45,10 @@ export function UniverseLayout({
           coreLayers={coreLayers}
           onLayerGainChange={onLayerGainChange}
           onLayerMuteToggle={onLayerMuteToggle}
+          // ✅ NEW
+          corePresetOptionsByLayer={corePresetOptionsByLayer}
+          coreLayerSourceMasterId={coreLayerSourceMasterId}
+          onLayerPresetChange={onCoreLayerPresetChange}
           bannerUrl={bannerUrl}
         />
 
@@ -57,7 +66,6 @@ export function UniverseLayout({
           onOrbitTimeSigChange={onOrbitTimeSigChange}
           onOrbitArpChange={onOrbitArpChange}
           onOrbitEnabledChange={onOrbitEnabledChange}
-          // ✅ NEW
           orbitVoiceOptions={orbitVoiceOptions}
           onOrbitVoicePresetChange={onOrbitVoicePresetChange}
         />

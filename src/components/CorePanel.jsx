@@ -10,8 +10,9 @@ export function CorePanel({
   onLayerGainChange,
   onLayerMuteToggle,
 
-  // ✅ NEW: per-layer preset options + handler
-  corePresetOptions = [], // [{ id, label }]
+  // ✅ per-layer preset options + current selection
+  corePresetOptionsByLayer = { ground: [], harmony: [], atmosphere: [] },
+  coreLayerSourceMasterId = { ground: "", harmony: "", atmosphere: "" },
   onLayerPresetChange,
 
   // optional UI bits
@@ -48,7 +49,8 @@ export function CorePanel({
         onLayerGainChange={onLayerGainChange}
         onLayerMuteToggle={onLayerMuteToggle}
         // ✅ NEW
-        corePresetOptions={corePresetOptions}
+        corePresetOptionsByLayer={corePresetOptionsByLayer}
+        coreLayerSourceMasterId={coreLayerSourceMasterId}
         onLayerPresetChange={onLayerPresetChange}
         bannerUrl={bannerUrl}
         sceneName={sceneName}
